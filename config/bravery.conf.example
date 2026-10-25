@@ -1,0 +1,38 @@
+# Bravery build configuration. Copy to ~/.bravery/bravery.conf and fill in.
+# This file is sourced by the scripts in ../scripts. Keep it private.
+
+# GitHub repo that receives the releases Obtainium installs from.
+BRAVERY_REPO=rfulwell/bravery
+
+# Where Brave and Chromium get checked out (~150 GB) and built (~100 GB more).
+BRAVERY_WORKDIR="$HOME/bravery-build"
+
+# CPU of the phone. Almost every current phone is arm64.
+BRAVERY_TARGET_ARCH=arm64
+
+# Signing key. Every Bravery update must be signed with this same key, or
+# Android refuses to install it over the previous version. Back it up.
+# Create it with scripts/make-keystore.sh.
+BRAVERY_KEYSTORE="$HOME/.bravery/bravery.keystore"
+BRAVERY_KEY_ALIAS=bravery
+BRAVERY_KEYSTORE_PASSWORD=
+BRAVERY_KEY_PASSWORD=
+
+# 1 = optimized "official" build like Brave ships (needs ~64 GB RAM, slower).
+# 0 = regular release build (fine on 32 GB, builds faster, runs a bit slower).
+BRAVERY_OFFICIAL_BUILD=1
+
+# Brave's official builds embed private service keys (used by Sync, the
+# filter-list updater and a few other Brave services). Custom builds don't
+# have them. Leave empty to use a placeholder; set them only if you have
+# your own legitimately obtained keys.
+BRAVERY_BRAVE_SERVICES_KEY=
+BRAVERY_SERVICE_KEY_SEARCH=
+BRAVERY_SERVICE_KEY_AICHAT=
+BRAVERY_SERVICE_KEY_STT=
+
+# Build a specific Brave tag instead of the latest stable release (e.g. v1.98.61).
+BRAVERY_BRAVE_TAG=
+
+# Power off the machine when an auto-update run finishes (for scheduled VMs).
+BRAVERY_SHUTDOWN_WHEN_DONE=0

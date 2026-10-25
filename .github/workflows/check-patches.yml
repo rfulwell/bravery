@@ -1,0 +1,43 @@
+# Daily, on free GitHub runners: do the Bravery patches still apply to Brave's
+# latest stable and beta releases? Beta gives a few weeks' warning before a
+# stable release would break the automatic build. No compiling happens here.
+name: Check patches
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  push:
+    paths:
+      - 'patches/**'
+      - 'scripts/check-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [release, beta]
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pyyaml
+      - name: Find Brave ${{ matrix.channel }}
+        id: brave
+        run: echo "tag=$(scripts/latest-brave-release.sh ${{ matrix.channel }})" >> "$GITHUB_OUTPUT"
+      - name: Apply patches to ${{ steps.brave.outputs.tag }}
+        run: scripts/check-patches.sh "${{ steps.brave.outputs.tag }}"
+      - name: Open an issue
+        if: failure() && github.event_name == 'schedule' && steps.brave.outputs.tag != ''
+        run: |
+          title="Bravery patches no longer apply to Brave ${{ matrix.channel }} ${{ steps.brave.outputs.tag }}"
+          if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')" ]; then
+            gh issue create --title "$title" \
+              --body "See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi

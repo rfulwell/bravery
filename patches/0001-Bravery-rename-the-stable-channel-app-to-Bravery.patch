@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 25 Oct 2026 19:18:18 +0000
+Subject: [PATCH 1/2] Bravery: rename the stable-channel app to Bravery
+
+The package name (com.brave.browser_bravery) is set at build time through
+the chrome_public_manifest_package GN arg, so Bravery installs alongside
+the Play Store build of Brave.
+---
+ .../android/res_brave_base/values/channel_constants.xml   | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/app/theme/brave/android/res_brave_base/values/channel_constants.xml b/app/theme/brave/android/res_brave_base/values/channel_constants.xml
+index 4759d6a86..f9520b7f8 100644
+--- a/app/theme/brave/android/res_brave_base/values/channel_constants.xml
++++ b/app/theme/brave/android/res_brave_base/values/channel_constants.xml
+@@ -5,8 +5,8 @@
+ 
+ <resources xmlns:android="http://schemas.android.com/apk/res/android">
+     <!-- The application name displayed to the user. -->
+-    <string name="app_name" translatable="false">Brave</string>
+-    <string name="bookmark_widget_title" translatable="false">Brave bookmarks</string>
+-    <string name="search_widget_title" translatable="false">Brave search</string>
+-    <string name="quick_action_search_widget_title" translatable="false">Brave quick action search</string>
++    <string name="app_name" translatable="false">Bravery</string>
++    <string name="bookmark_widget_title" translatable="false">Bravery bookmarks</string>
++    <string name="search_widget_title" translatable="false">Bravery search</string>
++    <string name="quick_action_search_widget_title" translatable="false">Bravery quick action search</string>
+ </resources>

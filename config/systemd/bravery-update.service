@@ -1,0 +1,13 @@
+# User unit: copy to ~/.config/systemd/user/ together with bravery-update.timer,
+# adjust the path, then: systemctl --user enable --now bravery-update.timer
+# and (so it runs while logged out): sudo loginctl enable-linger "$USER"
+[Unit]
+Description=Build and publish Bravery for new Brave releases
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/bravery/scripts/auto-update.sh
+TimeoutStartSec=infinity
+Nice=10

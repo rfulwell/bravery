@@ -1,0 +1,2006 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 25 Oct 2026 19:32:13 +0000
+Subject: [PATCH 2/2] Bravery: tap to scroll, banner hiding and toolbar
+ auto-hide
+
+Tap to scroll: BraveContentView reports page touches to BraveryController.
+A tap that the renderer reports as unhandled, inside a scroll zone, becomes
+a short synthetic drag at the tap point, so it scrolls the scroller under
+the finger and hides the toolbar like a real swipe. A Blink plaster makes
+taps the page reacted to (DOM/style change, focusable element or ARIA
+widget) count as handled.
+
+Banner hiding: "Auto-hide banner" / "Remove banner" in the long-press menu
+(including empty areas, where Chromium sends a page menu with no items) and
+"Hide banner" in the text selection menu. A script in Brave's internal
+isolated world finds the outermost fixed/sticky element, hides it, and the
+rule is remembered per site (not in private tabs).
+
+Toolbar: upstream pins the URL bar whenever an accessibility service that
+can perform gestures runs (e.g. Tap2Scroll). A plaster makes that a setting.
+
+Settings > Bravery holds all of it.
+---
+ android/BUILD.gn                              |   2 +
+ android/brave_java_sources.gni                |   7 +
+ android/java/brave-res/values/brave_ids.xml   |   4 +
+ .../java/brave-res/values/bravery_strings.xml |  70 ++++
+ .../brave-res/xml/brave_main_preferences.xml  |   6 +
+ .../brave-res/xml/bravery_preferences.xml     |  73 +++++
+ .../browser/BraveApplicationImplBase.java     |   4 +
+ .../browser/bravery/BraveryBannerHider.java   | 147 +++++++++
+ .../browser/bravery/BraveryContextMenu.java   | 102 ++++++
+ .../browser/bravery/BraveryController.java    |  92 ++++++
+ .../browser/bravery/BraveryPreferences.java   |  92 ++++++
+ .../chrome/browser/bravery/BraveryPrefs.java  | 159 +++++++++
+ .../bravery/BraverySelectionMenuDelegate.java |  99 ++++++
+ .../browser/bravery/BraveryTapToScroll.java   | 309 ++++++++++++++++++
+ .../BraveChromeContextMenuPopulator.java      |   7 +
+ .../settings/BraveMainPreferencesBase.java    |   2 +
+ browser/android/bravery/BUILD.gn              |  28 ++
+ browser/android/bravery/DEPS                  |   4 +
+ .../android/bravery/bravery_banner_hider.js   | 299 +++++++++++++++++
+ .../bravery/bravery_banner_hider_android.cc   |  61 ++++
+ .../android/bravery/generate_script_header.py |  28 ++
+ browser/sources.gni                           |   1 +
+ build/android/config.gni                      |   1 +
+ .../view/BraveContentView.java                |  36 ++
+ ...rowserControlsVisibilityDelegate.java.yaml |  20 ++
+ .../core/input/gesture_manager.cc.yaml        |  25 ++
+ 26 files changed, 1678 insertions(+)
+ create mode 100644 android/java/brave-res/values/bravery_strings.xml
+ create mode 100644 android/java/brave-res/xml/bravery_preferences.xml
+ create mode 100644 android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
+ create mode 100644 android/java/org/chromium/chrome/browser/bravery/BraveryContextMenu.java
+ create mode 100644 android/java/org/chromium/chrome/browser/bravery/BraveryController.java
+ create mode 100644 android/java/org/chromium/chrome/browser/bravery/BraveryPreferences.java
+ create mode 100644 android/java/org/chromium/chrome/browser/bravery/BraveryPrefs.java
+ create mode 100644 android/java/org/chromium/chrome/browser/bravery/BraverySelectionMenuDelegate.java
+ create mode 100644 android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
+ create mode 100644 browser/android/bravery/BUILD.gn
+ create mode 100644 browser/android/bravery/DEPS
+ create mode 100644 browser/android/bravery/bravery_banner_hider.js
+ create mode 100644 browser/android/bravery/bravery_banner_hider_android.cc
+ create mode 100644 browser/android/bravery/generate_script_header.py
+ create mode 100644 rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
+ create mode 100644 rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
+
+diff --git a/android/BUILD.gn b/android/BUILD.gn
+index ad0414971..a29052157 100644
+--- a/android/BUILD.gn
++++ b/android/BUILD.gn
+@@ -676,6 +676,7 @@ android_resources("java_resources") {
+     "java/brave-res/values/brave_attrs.xml",
+     "java/brave-res/values/brave_ids.xml",
+     "java/brave-res/values/brave_styles.xml",
++    "java/brave-res/values/bravery_strings.xml",
+     "java/brave-res/values/dimens.xml",
+     "java/brave-res/values/shimmer_attrs.xml",
+     "java/brave-res/xml/autofill_service_configuration.xml",
+@@ -702,6 +703,7 @@ android_resources("java_resources") {
+     "java/brave-res/xml/brave_wallet_networks_preference.xml",
+     "java/brave-res/xml/brave_wallet_preferences.xml",
+     "java/brave-res/xml/brave_webrtc_policy_preferences.xml",
++    "java/brave-res/xml/bravery_preferences.xml",
+     "java/brave-res/xml/ens_preferences.xml",
+     "java/brave-res/xml/media_preferences.xml",
+     "java/brave-res/xml/qa_preferences.xml",
+diff --git a/android/brave_java_sources.gni b/android/brave_java_sources.gni
+index 6c1023606..9f1d835dd 100644
+--- a/android/brave_java_sources.gni
++++ b/android/brave_java_sources.gni
+@@ -68,6 +68,13 @@ brave_java_sources = [
+   "../../brave/android/java/org/chromium/chrome/browser/app/shimmer/ShimmerDrawable.java",
+   "../../brave/android/java/org/chromium/chrome/browser/app/shimmer/ShimmerFrameLayout.java",
+   "../../brave/android/java/org/chromium/chrome/browser/autofill/settings/BraveAutofillPaymentMethodsFragmentBase.java",
++  "../../brave/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java",
++  "../../brave/android/java/org/chromium/chrome/browser/bravery/BraveryContextMenu.java",
++  "../../brave/android/java/org/chromium/chrome/browser/bravery/BraveryController.java",
++  "../../brave/android/java/org/chromium/chrome/browser/bravery/BraveryPreferences.java",
++  "../../brave/android/java/org/chromium/chrome/browser/bravery/BraveryPrefs.java",
++  "../../brave/android/java/org/chromium/chrome/browser/bravery/BraverySelectionMenuDelegate.java",
++  "../../brave/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java",
+   "../../brave/android/java/org/chromium/chrome/browser/bookmarks/BraveBookmarkBridge.java",
+   "../../brave/android/java/org/chromium/chrome/browser/bookmarks/BraveBookmarkImportExportDialogFragment.java",
+   "../../brave/android/java/org/chromium/chrome/browser/bookmarks/BraveBookmarkManagerCoordinator.java",
+diff --git a/android/java/brave-res/values/brave_ids.xml b/android/java/brave-res/values/brave_ids.xml
+index e3cf1ade1..8f21f71bb 100644
+--- a/android/java/brave-res/values/brave_ids.xml
++++ b/android/java/brave-res/values/brave_ids.xml
+@@ -31,4 +31,8 @@
+ 
+     <!-- Brave Talk notification -->
+     <item type="id" name="media_playback_mic_notification" />
++    <item type="id" name="bravery_banner_autohide" />
++    <item type="id" name="bravery_banner_remove" />
++    <item type="id" name="bravery_banner_restore" />
++    <item type="id" name="bravery_tap_scroll_site" />
+ </resources>
+diff --git a/android/java/brave-res/values/bravery_strings.xml b/android/java/brave-res/values/bravery_strings.xml
+new file mode 100644
+index 000000000..2afee93cb
+--- /dev/null
++++ b/android/java/brave-res/values/bravery_strings.xml
+@@ -0,0 +1,70 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright (c) 2026 The Bravery Authors. All rights reserved.
++     This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this file,
++     You can obtain one at https://mozilla.org/MPL/2.0/. -->
++<resources>
++    <string name="bravery_settings_title" translatable="false">Bravery</string>
++    <string name="bravery_settings_summary" translatable="false">Tap to scroll, banner hiding, toolbar</string>
++
++    <string name="bravery_tap_scroll_section" translatable="false">Tap to scroll</string>
++    <string name="bravery_tap_scroll_enabled" translatable="false">Tap to scroll</string>
++    <string name="bravery_tap_scroll_enabled_summary" translatable="false">Tap a scroll zone to scroll the page. Taps on links, buttons and fields work as usual.</string>
++    <string name="bravery_tap_scroll_layout" translatable="false">Scroll zones</string>
++    <string name="bravery_tap_scroll_distance" translatable="false">Scroll distance</string>
++    <string name="bravery_tap_scroll_speed" translatable="false">Scroll speed</string>
++    <string name="bravery_tap_scroll_invert" translatable="false">Reverse direction</string>
++    <string name="bravery_tap_scroll_reset_sites" translatable="false">Turn tap to scroll back on everywhere</string>
++    <string name="bravery_tap_scroll_reset_sites_summary" translatable="false">Off on %1$d site(s)</string>
++    <string name="bravery_tap_scroll_disable_site" translatable="false">Turn off tap to scroll on this site</string>
++    <string name="bravery_tap_scroll_enable_site" translatable="false">Turn on tap to scroll on this site</string>
++
++    <string name="bravery_banner_section" translatable="false">Banners</string>
++    <string name="bravery_banner_menu_enabled" translatable="false">Banner options in long-press menu</string>
++    <string name="bravery_banner_menu_enabled_summary" translatable="false">Long-press a banner to auto-hide it while scrolling, or remove it</string>
++    <string name="bravery_banner_reset_sites" translatable="false">Show all hidden banners again</string>
++    <string name="bravery_banner_reset_sites_summary" translatable="false">Banners hidden on %1$d site(s)</string>
++    <string name="bravery_banner_hide" translatable="false">Hide banner</string>
++    <string name="bravery_banner_autohide" translatable="false">Auto-hide banner</string>
++    <string name="bravery_banner_remove" translatable="false">Remove banner</string>
++    <string name="bravery_banner_restore" translatable="false">Show hidden banners on this site</string>
++    <string name="bravery_banner_autohidden" translatable="false">Banner will hide while you scroll</string>
++    <string name="bravery_banner_removed" translatable="false">Banner removed</string>
++    <string name="bravery_banner_restored" translatable="false">Hidden banners restored</string>
++    <string name="bravery_banner_not_found" translatable="false">No fixed banner found there</string>
++
++    <string name="bravery_toolbar_section" translatable="false">Toolbar</string>
++    <string name="bravery_toolbar_hide_with_accessibility" translatable="false">Hide toolbar while scrolling with accessibility apps on</string>
++    <string name="bravery_toolbar_hide_with_accessibility_summary" translatable="false">Brave keeps the address bar pinned whenever an accessibility app that performs gestures is running. Applies to newly loaded pages.</string>
++
++    <string-array name="bravery_tap_scroll_layout_entries" translatable="false">
++        <item>Top and bottom edges</item>
++        <item>Left and right sides</item>
++        <item>Corners</item>
++    </string-array>
++    <string-array name="bravery_tap_scroll_layout_values" translatable="false">
++        <item>edges</item>
++        <item>sides</item>
++        <item>corners</item>
++    </string-array>
++    <string-array name="bravery_tap_scroll_distance_entries" translatable="false">
++        <item>Half a screen</item>
++        <item>Three quarters of a screen</item>
++        <item>Nearly a full screen</item>
++    </string-array>
++    <string-array name="bravery_tap_scroll_distance_values" translatable="false">
++        <item>50</item>
++        <item>75</item>
++        <item>90</item>
++    </string-array>
++    <string-array name="bravery_tap_scroll_speed_entries" translatable="false">
++        <item>Slow</item>
++        <item>Medium</item>
++        <item>Fast</item>
++    </string-array>
++    <string-array name="bravery_tap_scroll_speed_values" translatable="false">
++        <item>slow</item>
++        <item>medium</item>
++        <item>fast</item>
++    </string-array>
++</resources>
+diff --git a/android/java/brave-res/xml/brave_main_preferences.xml b/android/java/brave-res/xml/brave_main_preferences.xml
+index 42f124fc2..9950c3057 100644
+--- a/android/java/brave-res/xml/brave_main_preferences.xml
++++ b/android/java/brave-res/xml/brave_main_preferences.xml
+@@ -97,6 +97,12 @@
+         android:order="16"
+         android:icon="@drawable/ic_media_player"
+         android:title="@string/prefs_media"/>
++    <org.chromium.components.browser_ui.settings.ChromeBasePreference
++        android:fragment="org.chromium.chrome.browser.bravery.BraveryPreferences"
++        android:key="bravery"
++        android:icon="@drawable/ic_appearance"
++        android:title="@string/bravery_settings_title"
++        android:summary="@string/bravery_settings_summary"/>
+     <org.chromium.components.browser_ui.settings.ChromeBasePreference
+         android:fragment="org.chromium.chrome.browser.settings.AppearancePreferences"
+         android:key="brave_appearance"
+diff --git a/android/java/brave-res/xml/bravery_preferences.xml b/android/java/brave-res/xml/bravery_preferences.xml
+new file mode 100644
+index 000000000..95f59117c
+--- /dev/null
++++ b/android/java/brave-res/xml/bravery_preferences.xml
+@@ -0,0 +1,73 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright (c) 2026 The Bravery Authors. All rights reserved.
++     This Source Code Form is subject to the terms of the Mozilla Public
++     License, v. 2.0. If a copy of the MPL was not distributed with this file,
++     You can obtain one at https://mozilla.org/MPL/2.0/. -->
++<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto">
++
++    <PreferenceCategory
++        android:key="bravery_tap_scroll_section"
++        android:title="@string/bravery_tap_scroll_section">
++        <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
++            android:key="tap_scroll_enabled"
++            android:title="@string/bravery_tap_scroll_enabled"
++            android:summary="@string/bravery_tap_scroll_enabled_summary"
++            android:defaultValue="true" />
++        <ListPreference
++            android:key="tap_scroll_layout"
++            android:dependency="tap_scroll_enabled"
++            android:title="@string/bravery_tap_scroll_layout"
++            android:entries="@array/bravery_tap_scroll_layout_entries"
++            android:entryValues="@array/bravery_tap_scroll_layout_values"
++            android:defaultValue="edges"
++            app:useSimpleSummaryProvider="true" />
++        <ListPreference
++            android:key="tap_scroll_distance"
++            android:dependency="tap_scroll_enabled"
++            android:title="@string/bravery_tap_scroll_distance"
++            android:entries="@array/bravery_tap_scroll_distance_entries"
++            android:entryValues="@array/bravery_tap_scroll_distance_values"
++            android:defaultValue="75"
++            app:useSimpleSummaryProvider="true" />
++        <ListPreference
++            android:key="tap_scroll_speed"
++            android:dependency="tap_scroll_enabled"
++            android:title="@string/bravery_tap_scroll_speed"
++            android:entries="@array/bravery_tap_scroll_speed_entries"
++            android:entryValues="@array/bravery_tap_scroll_speed_values"
++            android:defaultValue="medium"
++            app:useSimpleSummaryProvider="true" />
++        <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
++            android:key="tap_scroll_invert"
++            android:dependency="tap_scroll_enabled"
++            android:title="@string/bravery_tap_scroll_invert"
++            android:defaultValue="false" />
++        <Preference
++            android:key="bravery_tap_scroll_reset_sites"
++            android:title="@string/bravery_tap_scroll_reset_sites" />
++    </PreferenceCategory>
++
++    <PreferenceCategory
++        android:key="bravery_banner_section"
++        android:title="@string/bravery_banner_section">
++        <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
++            android:key="banner_menu_enabled"
++            android:title="@string/bravery_banner_menu_enabled"
++            android:summary="@string/bravery_banner_menu_enabled_summary"
++            android:defaultValue="true" />
++        <Preference
++            android:key="bravery_banner_reset_sites"
++            android:title="@string/bravery_banner_reset_sites" />
++    </PreferenceCategory>
++
++    <PreferenceCategory
++        android:key="bravery_toolbar_section"
++        android:title="@string/bravery_toolbar_section">
++        <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
++            android:key="toolbar_hide_with_accessibility"
++            android:title="@string/bravery_toolbar_hide_with_accessibility"
++            android:summary="@string/bravery_toolbar_hide_with_accessibility_summary"
++            android:defaultValue="true" />
++    </PreferenceCategory>
++</PreferenceScreen>
+diff --git a/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java b/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java
+index 16f23bb81..d01b1a1a2 100644
+--- a/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java
++++ b/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java
+@@ -16,6 +16,7 @@ import org.chromium.base.Log;
+ import org.chromium.build.annotations.NullMarked;
+ import org.chromium.build.annotations.Nullable;
+ import org.chromium.chrome.browser.base.SplitCompatApplication;
++import org.chromium.chrome.browser.bravery.BraveryController;
+ import org.chromium.chrome.browser.profiles.OriginalProfileSupplier;
+ import org.chromium.chrome.browser.settings.BraveSearchEngineUtils;
+ import org.chromium.chrome.browser.vpn.utils.BraveVpnProfileUtils;
+@@ -64,6 +65,9 @@ public class BraveApplicationImplBase extends SplitCompatApplication.Impl {
+             SafeBrowsingApiBridge.setSafeBrowsingApiHandler(
+                     BraveSafeBrowsingApiHandler.getInstance());
+ 
++            // Bravery: tap to scroll and banner hiding hook into every page view.
++            BraveryController.install();
++
+             // Apply Brave's default search engine as soon as the profile exists, instead of
+             // waiting for BraveActivity. Entry points such as the search widget resolve queries
+             // through SearchActivity, which never runs BraveActivity and would otherwise search
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
+new file mode 100644
+index 000000000..cde231a43
+--- /dev/null
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
+@@ -0,0 +1,147 @@
++/* Copyright (c) 2026 The Bravery Authors. All rights reserved.
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++package org.chromium.chrome.browser.bravery;
++
++import android.content.Context;
++
++import org.jni_zero.JNINamespace;
++import org.jni_zero.NativeMethods;
++import org.json.JSONArray;
++import org.json.JSONException;
++import org.json.JSONObject;
++
++import org.chromium.base.Callback;
++import org.chromium.base.ContextUtils;
++import org.chromium.chrome.R;
++import org.chromium.content_public.browser.WebContents;
++import org.chromium.ui.widget.Toast;
++
++/**
++ * Hides fixed and sticky page banners (cookie notices, "open in app" bars, sticky headers) that
++ * the user long-presses. The page-side logic lives in bravery_banner_hider.js, which runs in
++ * Brave's internal isolated world so pages can neither see nor tamper with it.
++ *
++ * <p>Two modes: "autohide" slides the banner out of the way while scrolling down and brings it
++ * back when scrolling up, like the URL bar; "remove" hides it outright. Choices are remembered
++ * per site (except in private tabs) and re-applied whenever the site loads.
++ */
++@JNINamespace("bravery")
++public final class BraveryBannerHider {
++    public static final String MODE_AUTOHIDE = "autohide";
++    public static final String MODE_REMOVE = "remove";
++
++    private BraveryBannerHider() {}
++
++    /** Hides the banner under a point given in DIPs relative to the page view. */
++    public static void hideAt(WebContents webContents, float xDip, float yDip, String mode) {
++        float density =
++                ContextUtils.getApplicationContext().getResources().getDisplayMetrics().density;
++        run(
++                webContents,
++                "hideAt("
++                        + xDip * density
++                        + ","
++                        + yDip * density
++                        + ","
++                        + JSONObject.quote(mode)
++                        + ")",
++                result -> onHideResult(webContents, result));
++    }
++
++    /** Hides the banner containing the current text selection. */
++    public static void hideSelection(WebContents webContents, String mode) {
++        run(
++                webContents,
++                "hideSelection(" + JSONObject.quote(mode) + ")",
++                result -> onHideResult(webContents, result));
++    }
++
++    /** Re-applies remembered rules for the page's site. Safe to call repeatedly. */
++    public static void applySavedRules(WebContents webContents) {
++        if (webContents == null || webContents.isDestroyed()) return;
++        String host = webContents.getLastCommittedUrl().getHost();
++        if (!BraveryPrefs.hasBannerRules(host)) return;
++        run(webContents, "applyRules(" + BraveryPrefs.getBannerRules(host) + ")", null);
++    }
++
++    public static boolean hasSavedRules(WebContents webContents) {
++        return webContents != null
++                && !webContents.isDestroyed()
++                && BraveryPrefs.hasBannerRules(webContents.getLastCommittedUrl().getHost());
++    }
++
++    /** Forgets every banner hidden on the page's site and shows them again. */
++    public static void restoreSite(WebContents webContents) {
++        if (webContents == null || webContents.isDestroyed()) return;
++        BraveryPrefs.clearBannerRules(webContents.getLastCommittedUrl().getHost());
++        run(webContents, "reset()", null);
++        showToast(R.string.bravery_banner_restored);
++    }
++
++    private static void run(WebContents webContents, String call, Callback<String> callback) {
++        if (webContents == null || webContents.isDestroyed()) return;
++        BraveryBannerHiderJni.get()
++                .runScript(
++                        webContents,
++                        "window.__bravery." + call,
++                        callback != null ? callback : result -> {});
++    }
++
++    private static void onHideResult(WebContents webContents, String result) {
++        JSONObject json;
++        try {
++            json = new JSONObject(result);
++        } catch (JSONException e) {
++            json = new JSONObject();
++        }
++        if (!json.optBoolean("ok")) {
++            showToast(R.string.bravery_banner_not_found);
++            return;
++        }
++        String selector = json.optString("selector", "");
++        String mode = json.optString("mode", MODE_AUTOHIDE);
++        if (!selector.isEmpty()
++                && webContents != null
++                && !webContents.isDestroyed()
++                && !webContents.isIncognito()) {
++            remember(webContents.getLastCommittedUrl().getHost(), selector, mode);
++        }
++        showToast(
++                MODE_REMOVE.equals(mode)
++                        ? R.string.bravery_banner_removed
++                        : R.string.bravery_banner_autohidden);
++    }
++
++    private static void remember(String host, String selector, String mode) {
++        JSONArray rules;
++        try {
++            rules = new JSONArray(BraveryPrefs.getBannerRules(host));
++        } catch (JSONException e) {
++            rules = new JSONArray();
++        }
++        JSONArray updated = new JSONArray();
++        for (int i = 0; i < rules.length(); i++) {
++            JSONObject rule = rules.optJSONObject(i);
++            if (rule != null && !selector.equals(rule.optString("s"))) updated.put(rule);
++        }
++        try {
++            updated.put(new JSONObject().put("s", selector).put("m", mode));
++        } catch (JSONException e) {
++            return;
++        }
++        BraveryPrefs.setBannerRules(host, updated.toString());
++    }
++
++    private static void showToast(int messageId) {
++        Context context = ContextUtils.getApplicationContext();
++        Toast.makeText(context, context.getString(messageId), Toast.LENGTH_SHORT).show();
++    }
++
++    @NativeMethods
++    interface Natives {
++        void runScript(WebContents webContents, String script, Callback<String> callback);
++    }
++}
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryContextMenu.java b/android/java/org/chromium/chrome/browser/bravery/BraveryContextMenu.java
+new file mode 100644
+index 000000000..07a2adffa
+--- /dev/null
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryContextMenu.java
+@@ -0,0 +1,102 @@
++/* Copyright (c) 2026 The Bravery Authors. All rights reserved.
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++package org.chromium.chrome.browser.bravery;
++
++import static org.chromium.ui.listmenu.ListMenuItemProperties.ENABLED;
++import static org.chromium.ui.listmenu.ListMenuItemProperties.MENU_ITEM_ID;
++import static org.chromium.ui.listmenu.ListMenuItemProperties.TEXT_APPEARANCE_ID;
++import static org.chromium.ui.listmenu.ListMenuItemProperties.TITLE;
++
++import android.content.Context;
++
++import org.chromium.chrome.R;
++import org.chromium.components.browser_ui.widget.BrowserUiListMenuUtils;
++import org.chromium.components.embedder_support.contextmenu.ContextMenuParams;
++import org.chromium.content_public.browser.WebContents;
++import org.chromium.ui.listmenu.ListItemType;
++import org.chromium.ui.listmenu.ListMenuItemProperties;
++import org.chromium.ui.modelutil.MVCListAdapter.ListItem;
++import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
++import org.chromium.ui.modelutil.PropertyModel;
++
++import java.util.List;
++
++/**
++ * Bravery's group in the long-press menu. Chromium already sends a menu request when an empty
++ * part of the page is long-pressed but normally has nothing to show; adding this group makes the
++ * menu appear there too, so any part of a banner can be long-pressed.
++ */
++public final class BraveryContextMenu {
++    private BraveryContextMenu() {}
++
++    public static void addItems(
++            Context context, List<ModelList> groups, WebContents webContents) {
++        if (webContents == null || webContents.isDestroyed()) return;
++        ModelList group = new ModelList();
++        if (BraveryPrefs.isBannerMenuEnabled()) {
++            group.add(item(context, R.id.bravery_banner_autohide, R.string.bravery_banner_autohide));
++            group.add(item(context, R.id.bravery_banner_remove, R.string.bravery_banner_remove));
++            if (BraveryBannerHider.hasSavedRules(webContents)) {
++                group.add(
++                        item(context, R.id.bravery_banner_restore, R.string.bravery_banner_restore));
++            }
++        }
++        if (BraveryPrefs.isTapScrollEnabled()) {
++            boolean disabledHere =
++                    BraveryPrefs.isTapScrollDisabledForSite(
++                            webContents.getLastCommittedUrl().getHost());
++            group.add(
++                    item(
++                            context,
++                            R.id.bravery_tap_scroll_site,
++                            disabledHere
++                                    ? R.string.bravery_tap_scroll_enable_site
++                                    : R.string.bravery_tap_scroll_disable_site));
++        }
++        if (!group.isEmpty()) groups.add(group);
++    }
++
++    /** Returns true if the item was one of Bravery's. */
++    public static boolean onItemSelected(
++            int itemId, ContextMenuParams params, WebContents webContents) {
++        if (itemId == R.id.bravery_banner_autohide || itemId == R.id.bravery_banner_remove) {
++            BraveryBannerHider.hideAt(
++                    webContents,
++                    params.getTriggeringTouchXDp(),
++                    params.getTriggeringTouchYDp(),
++                    itemId == R.id.bravery_banner_remove
++                            ? BraveryBannerHider.MODE_REMOVE
++                            : BraveryBannerHider.MODE_AUTOHIDE);
++            return true;
++        }
++        if (itemId == R.id.bravery_banner_restore) {
++            BraveryBannerHider.restoreSite(webContents);
++            return true;
++        }
++        if (itemId == R.id.bravery_tap_scroll_site) {
++            if (webContents != null && !webContents.isDestroyed()) {
++                String host = webContents.getLastCommittedUrl().getHost();
++                BraveryPrefs.setTapScrollDisabledForSite(
++                        host, !BraveryPrefs.isTapScrollDisabledForSite(host));
++            }
++            return true;
++        }
++        return false;
++    }
++
++    private static ListItem item(Context context, int id, int titleRes) {
++        PropertyModel model =
++                new PropertyModel.Builder(ListMenuItemProperties.ALL_KEYS)
++                        .with(MENU_ITEM_ID, id)
++                        .with(TITLE, context.getString(titleRes))
++                        .with(ENABLED, true)
++                        .with(
++                                TEXT_APPEARANCE_ID,
++                                BrowserUiListMenuUtils.getDefaultTextAppearanceStyle())
++                        .build();
++        return new ListItem(ListItemType.MENU_ITEM, model);
++    }
++}
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryController.java b/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
+new file mode 100644
+index 000000000..ad2edb98c
+--- /dev/null
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
+@@ -0,0 +1,92 @@
++/* Copyright (c) 2026 The Bravery Authors. All rights reserved.
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++package org.chromium.chrome.browser.bravery;
++
++import android.view.MotionEvent;
++
++import org.chromium.components.embedder_support.view.BraveContentView;
++import org.chromium.content_public.browser.GestureListenerManager;
++import org.chromium.content_public.browser.WebContents;
++import org.chromium.content_public.browser.WebContentsObserver;
++import org.chromium.url.GURL;
++
++import java.util.Map;
++import java.util.HashMap;
++
++/** Attaches Bravery's per-tab features to every page view. Installed once per process. */
++public final class BraveryController implements BraveContentView.BraveryHook {
++    private static BraveryController sInstance;
++
++    private final Map<WebContents, TabState> mTabStates = new HashMap<>();
++
++    private BraveryController() {}
++
++    public static void install() {
++        if (sInstance != null) return;
++        sInstance = new BraveryController();
++        BraveContentView.setBraveryHook(sInstance);
++    }
++
++    @Override
++    public void onWebContentsAttached(BraveContentView view, WebContents webContents) {
++        getOrCreateState(webContents).tapToScroll.setView(view);
++    }
++
++    @Override
++    public void onTouchEvent(BraveContentView view, MotionEvent event) {
++        WebContents webContents = view.getWebContents();
++        if (webContents == null || webContents.isDestroyed()) return;
++        TabState state = getOrCreateState(webContents);
++        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
++            // Chrome may install its own selection menu delegate after the view is created.
++            BraverySelectionMenuDelegate.ensureInstalled(webContents);
++        }
++        state.tapToScroll.onTouchEvent(view, event);
++    }
++
++    private TabState getOrCreateState(WebContents webContents) {
++        TabState state = mTabStates.get(webContents);
++        if (state == null) {
++            state = new TabState(webContents);
++            mTabStates.put(webContents, state);
++        }
++        return state;
++    }
++
++    private final class TabState extends WebContentsObserver {
++        final BraveryTapToScroll tapToScroll;
++
++        TabState(WebContents webContents) {
++            super(webContents);
++            tapToScroll = new BraveryTapToScroll(webContents);
++            GestureListenerManager gestures = GestureListenerManager.fromWebContents(webContents);
++            if (gestures != null) gestures.addListener(tapToScroll);
++            BraverySelectionMenuDelegate.ensureInstalled(webContents);
++        }
++
++        @Override
++        public void primaryMainDocumentElementAvailable() {
++            applyBannerRules();
++        }
++
++        @Override
++        public void didStopLoading(GURL url, boolean isKnownValid) {
++            applyBannerRules();
++        }
++
++        @Override
++        public void webContentsDestroyed() {
++            WebContents webContents = getWebContents();
++            if (webContents != null) mTabStates.remove(webContents);
++            observe(null);
++        }
++
++        private void applyBannerRules() {
++            WebContents webContents = getWebContents();
++            if (webContents != null) BraveryBannerHider.applySavedRules(webContents);
++        }
++    }
++}
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryPreferences.java b/android/java/org/chromium/chrome/browser/bravery/BraveryPreferences.java
+new file mode 100644
+index 000000000..8639a47df
+--- /dev/null
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryPreferences.java
+@@ -0,0 +1,92 @@
++/* Copyright (c) 2026 The Bravery Authors. All rights reserved.
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++package org.chromium.chrome.browser.bravery;
++
++import android.os.Bundle;
++
++import androidx.preference.Preference;
++
++import org.chromium.base.supplier.MonotonicObservableSupplier;
++import org.chromium.base.supplier.ObservableSuppliers;
++import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
++import org.chromium.chrome.R;
++import org.chromium.chrome.browser.settings.BravePreferenceFragment;
++import org.chromium.components.browser_ui.settings.SettingsUtils;
++import org.chromium.components.browser_ui.settings.search.BaseSearchIndexProvider;
++
++/** Settings > Bravery. Values are stored by the preference widgets directly in BraveryPrefs. */
++public class BraveryPreferences extends BravePreferenceFragment {
++    private static final String PREF_TAP_SCROLL_RESET_SITES = "bravery_tap_scroll_reset_sites";
++    private static final String PREF_BANNER_RESET_SITES = "bravery_banner_reset_sites";
++
++    private final SettableMonotonicObservableSupplier<String> mPageTitle =
++            ObservableSuppliers.createMonotonic();
++
++    @Override
++    public void onCreate(Bundle savedInstanceState) {
++        super.onCreate(savedInstanceState);
++        // Must precede inflation so the widgets read and write Bravery's own preference file.
++        getPreferenceManager().setSharedPreferencesName(BraveryPrefs.FILE_NAME);
++        mPageTitle.set(getString(R.string.bravery_settings_title));
++        SettingsUtils.addPreferencesFromResource(this, R.xml.bravery_preferences);
++
++        Preference resetTapSites = findPreference(PREF_TAP_SCROLL_RESET_SITES);
++        if (resetTapSites != null) {
++            resetTapSites.setOnPreferenceClickListener(
++                    preference -> {
++                        BraveryPrefs.clearTapScrollDisabledSites();
++                        updateSummaries();
++                        return true;
++                    });
++        }
++        Preference resetBannerSites = findPreference(PREF_BANNER_RESET_SITES);
++        if (resetBannerSites != null) {
++            resetBannerSites.setOnPreferenceClickListener(
++                    preference -> {
++                        BraveryPrefs.clearAllBannerRules();
++                        updateSummaries();
++                        return true;
++                    });
++        }
++    }
++
++    @Override
++    public void onResume() {
++        super.onResume();
++        updateSummaries();
++    }
++
++    @Override
++    public MonotonicObservableSupplier<String> getPageTitle() {
++        return mPageTitle;
++    }
++
++    @Override
++    public String getMainMenuKey() {
++        return "bravery";
++    }
++
++    private void updateSummaries() {
++        Preference resetTapSites = findPreference(PREF_TAP_SCROLL_RESET_SITES);
++        if (resetTapSites != null) {
++            int count = BraveryPrefs.getTapScrollDisabledSiteCount();
++            resetTapSites.setEnabled(count > 0);
++            resetTapSites.setSummary(
++                    getString(R.string.bravery_tap_scroll_reset_sites_summary, count));
++        }
++        Preference resetBannerSites = findPreference(PREF_BANNER_RESET_SITES);
++        if (resetBannerSites != null) {
++            int count = BraveryPrefs.getBannerSiteCount();
++            resetBannerSites.setEnabled(count > 0);
++            resetBannerSites.setSummary(
++                    getString(R.string.bravery_banner_reset_sites_summary, count));
++        }
++    }
++
++    public static final BaseSearchIndexProvider SEARCH_INDEX_DATA_PROVIDER =
++            new BaseSearchIndexProvider(
++                    BraveryPreferences.class.getName(), BaseSearchIndexProvider.INDEX_OPT_OUT);
++}
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryPrefs.java b/android/java/org/chromium/chrome/browser/bravery/BraveryPrefs.java
+new file mode 100644
+index 000000000..549288d67
+--- /dev/null
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryPrefs.java
+@@ -0,0 +1,159 @@
++/* Copyright (c) 2026 The Bravery Authors. All rights reserved.
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++package org.chromium.chrome.browser.bravery;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++
++import org.chromium.base.ContextUtils;
++
++import java.util.HashSet;
++import java.util.Set;
++
++/**
++ * Settings for Bravery's additions. Kept in a dedicated SharedPreferences file so they never
++ * collide with Brave's own keys and survive Brave updates untouched.
++ */
++public final class BraveryPrefs {
++    public static final String FILE_NAME = "bravery";
++
++    public static final String TOOLBAR_HIDE_WITH_ACCESSIBILITY = "toolbar_hide_with_accessibility";
++
++    public static final String TAP_SCROLL_ENABLED = "tap_scroll_enabled";
++    public static final String TAP_SCROLL_LAYOUT = "tap_scroll_layout";
++    public static final String TAP_SCROLL_DISTANCE = "tap_scroll_distance";
++    public static final String TAP_SCROLL_SPEED = "tap_scroll_speed";
++    public static final String TAP_SCROLL_INVERT = "tap_scroll_invert";
++    private static final String TAP_SCROLL_DISABLED_SITES = "tap_scroll_disabled_sites";
++
++    public static final String BANNER_MENU_ENABLED = "banner_menu_enabled";
++    private static final String BANNER_SITES = "banner_sites";
++    private static final String BANNER_RULES_PREFIX = "banner_rules:";
++
++    public static final String LAYOUT_EDGES = "edges";
++    public static final String LAYOUT_SIDES = "sides";
++    public static final String LAYOUT_CORNERS = "corners";
++
++    public static final String SPEED_SLOW = "slow";
++    public static final String SPEED_MEDIUM = "medium";
++    public static final String SPEED_FAST = "fast";
++
++    private BraveryPrefs() {}
++
++    public static SharedPreferences get() {
++        return ContextUtils.getApplicationContext()
++                .getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE);
++    }
++
++    /**
++     * Chromium pins the toolbar whenever an accessibility service that can perform gestures is
++     * running. That is what kept the URL bar from ever hiding while Tap2Scroll was enabled.
++     */
++    public static boolean shouldHideToolbarWithAccessibility() {
++        return get().getBoolean(TOOLBAR_HIDE_WITH_ACCESSIBILITY, true);
++    }
++
++    public static boolean isTapScrollEnabled() {
++        return get().getBoolean(TAP_SCROLL_ENABLED, true);
++    }
++
++    public static String getTapScrollLayout() {
++        return get().getString(TAP_SCROLL_LAYOUT, LAYOUT_EDGES);
++    }
++
++    /** Scroll distance as a fraction of the visible page height. */
++    public static float getTapScrollDistance() {
++        int percent;
++        try {
++            percent = Integer.parseInt(get().getString(TAP_SCROLL_DISTANCE, "75"));
++        } catch (NumberFormatException e) {
++            percent = 75;
++        }
++        return Math.max(10, Math.min(100, percent)) / 100f;
++    }
++
++    public static long getTapScrollDurationMs() {
++        String speed = get().getString(TAP_SCROLL_SPEED, SPEED_MEDIUM);
++        if (SPEED_SLOW.equals(speed)) return 400;
++        if (SPEED_FAST.equals(speed)) return 150;
++        return 250;
++    }
++
++    public static boolean isTapScrollInverted() {
++        return get().getBoolean(TAP_SCROLL_INVERT, false);
++    }
++
++    public static boolean isTapScrollDisabledForSite(String host) {
++        return host != null
++                && get().getStringSet(TAP_SCROLL_DISABLED_SITES, new HashSet<>()).contains(host);
++    }
++
++    public static void setTapScrollDisabledForSite(String host, boolean disabled) {
++        if (host == null || host.isEmpty()) return;
++        Set<String> sites =
++                new HashSet<>(get().getStringSet(TAP_SCROLL_DISABLED_SITES, new HashSet<>()));
++        if (disabled) {
++            sites.add(host);
++        } else {
++            sites.remove(host);
++        }
++        get().edit().putStringSet(TAP_SCROLL_DISABLED_SITES, sites).apply();
++    }
++
++    public static int getTapScrollDisabledSiteCount() {
++        return get().getStringSet(TAP_SCROLL_DISABLED_SITES, new HashSet<>()).size();
++    }
++
++    public static void clearTapScrollDisabledSites() {
++        get().edit().remove(TAP_SCROLL_DISABLED_SITES).apply();
++    }
++
++    public static boolean isBannerMenuEnabled() {
++        return get().getBoolean(BANNER_MENU_ENABLED, true);
++    }
++
++    /** Banner rules for a site, as a JSON array of {"s": selector, "m": mode}. */
++    public static String getBannerRules(String host) {
++        if (host == null || host.isEmpty()) return "[]";
++        return get().getString(BANNER_RULES_PREFIX + host, "[]");
++    }
++
++    public static boolean hasBannerRules(String host) {
++        return host != null && get().contains(BANNER_RULES_PREFIX + host);
++    }
++
++    public static void setBannerRules(String host, String rulesJson) {
++        if (host == null || host.isEmpty()) return;
++        Set<String> sites = new HashSet<>(get().getStringSet(BANNER_SITES, new HashSet<>()));
++        sites.add(host);
++        get().edit()
++                .putString(BANNER_RULES_PREFIX + host, rulesJson)
++                .putStringSet(BANNER_SITES, sites)
++                .apply();
++    }
++
++    public static void clearBannerRules(String host) {
++        if (host == null || host.isEmpty()) return;
++        Set<String> sites = new HashSet<>(get().getStringSet(BANNER_SITES, new HashSet<>()));
++        sites.remove(host);
++        get().edit()
++                .remove(BANNER_RULES_PREFIX + host)
++                .putStringSet(BANNER_SITES, sites)
++                .apply();
++    }
++
++    public static int getBannerSiteCount() {
++        return get().getStringSet(BANNER_SITES, new HashSet<>()).size();
++    }
++
++    public static void clearAllBannerRules() {
++        SharedPreferences.Editor editor = get().edit();
++        for (String host : get().getStringSet(BANNER_SITES, new HashSet<>())) {
++            editor.remove(BANNER_RULES_PREFIX + host);
++        }
++        editor.remove(BANNER_SITES).apply();
++    }
++}
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraverySelectionMenuDelegate.java b/android/java/org/chromium/chrome/browser/bravery/BraverySelectionMenuDelegate.java
+new file mode 100644
+index 000000000..98bae4bc5
+--- /dev/null
++++ b/android/java/org/chromium/chrome/browser/bravery/BraverySelectionMenuDelegate.java
+@@ -0,0 +1,99 @@
++/* Copyright (c) 2026 The Bravery Authors. All rights reserved.
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++package org.chromium.chrome.browser.bravery;
++
++import android.content.Context;
++import android.content.pm.ResolveInfo;
++import android.view.View;
++
++import org.chromium.chrome.R;
++import org.chromium.content_public.browser.SelectionMenuItem;
++import org.chromium.content_public.browser.SelectionPopupController;
++import org.chromium.content_public.browser.WebContents;
++import org.chromium.content_public.browser.selection.SelectionActionMenuDelegate;
++
++import java.util.ArrayList;
++import java.util.List;
++
++/**
++ * Adds "Hide banner" to the text selection menu, so long-pressing text inside a banner works too.
++ * Wraps, rather than replaces, any delegate Chrome already installed.
++ */
++final class BraverySelectionMenuDelegate implements SelectionActionMenuDelegate {
++    private final SelectionActionMenuDelegate mInner;
++
++    private BraverySelectionMenuDelegate(SelectionActionMenuDelegate inner) {
++        mInner = inner;
++    }
++
++    static void ensureInstalled(WebContents webContents) {
++        if (webContents == null || webContents.isDestroyed()) return;
++        SelectionPopupController controller = SelectionPopupController.fromWebContents(webContents);
++        if (controller == null) return;
++        SelectionActionMenuDelegate current = controller.getSelectionActionMenuDelegate();
++        if (current instanceof BraverySelectionMenuDelegate) return;
++        controller.setSelectionActionMenuDelegate(new BraverySelectionMenuDelegate(current));
++    }
++
++    @Override
++    public int[] getDefaultMenuItemOrder(int menuType) {
++        return mInner != null
++                ? mInner.getDefaultMenuItemOrder(menuType)
++                : SelectionActionMenuDelegate.getDefaultMenuItemOrder();
++    }
++
++    @Override
++    public List<SelectionMenuItem> getAdditionalMenuItems(
++            int menuType,
++            boolean isSelectionPassword,
++            boolean isSelectionReadOnly,
++            String selectedText) {
++        List<SelectionMenuItem> items = new ArrayList<>();
++        if (mInner != null) {
++            items.addAll(
++                    mInner.getAdditionalMenuItems(
++                            menuType, isSelectionPassword, isSelectionReadOnly, selectedText));
++        }
++        // Only page text, never editable fields.
++        if (isSelectionReadOnly && BraveryPrefs.isBannerMenuEnabled()) {
++            items.add(
++                    new SelectionMenuItem.Builder(R.string.bravery_banner_hide)
++                            .setId(R.id.bravery_banner_autohide)
++                            .setGroupId(R.id.select_action_menu_delegate_items)
++                            .setOrder(100)
++                            .build());
++        }
++        return items;
++    }
++
++    @Override
++    public List<ResolveInfo> filterTextProcessingActivities(
++            int menuType, List<ResolveInfo> activities) {
++        return mInner != null
++                ? mInner.filterTextProcessingActivities(menuType, activities)
++                : activities;
++    }
++
++    @Override
++    public boolean canReuseCachedSelectionMenu(int menuType) {
++        return mInner == null || mInner.canReuseCachedSelectionMenu(menuType);
++    }
++
++    @Override
++    public boolean handleMenuItemClick(
++            SelectionMenuItem item, WebContents webContents, View containerView) {
++        if (item.id == R.id.bravery_banner_autohide) {
++            BraveryBannerHider.hideSelection(webContents, BraveryBannerHider.MODE_AUTOHIDE);
++            return true;
++        }
++        return mInner != null && mInner.handleMenuItemClick(item, webContents, containerView);
++    }
++
++    @Override
++    public String getWebSearchMenuItemTitle(Context context, String selectedText) {
++        return mInner != null ? mInner.getWebSearchMenuItemTitle(context, selectedText) : null;
++    }
++}
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
+new file mode 100644
+index 000000000..a8717295e
+--- /dev/null
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
+@@ -0,0 +1,309 @@
++/* Copyright (c) 2026 The Bravery Authors. All rights reserved.
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++package org.chromium.chrome.browser.bravery;
++
++import android.os.SystemClock;
++import android.view.InputDevice;
++import android.view.MotionEvent;
++import android.view.ViewConfiguration;
++
++import org.chromium.components.embedder_support.view.BraveContentView;
++import org.chromium.content_public.browser.GestureStateListener;
++import org.chromium.content_public.browser.WebContents;
++
++import java.lang.ref.WeakReference;
++
++/**
++ * Native tap-to-scroll for one WebContents.
++ *
++ * <p>Taps are observed on the way into the page. Once the renderer has processed a tap, content
++ * reports back whether the page handled it (link, button, form field, or a page script that
++ * reacted). Only taps the page ignored, inside a scroll zone, turn into a scroll. The scroll is a
++ * short synthetic finger drag at the tap position, so it scrolls whatever is under the finger
++ * (including inner scrollers) and the toolbar hides and shows exactly as for a real swipe.
++ */
++final class BraveryTapToScroll extends GestureStateListener {
++    // A GestureTap is reported up to ~300ms late on pages that allow double-tap zoom.
++    private static final long MAX_TAP_ACK_DELAY_MS = 1500;
++    private static final long RELEASE_HOLD_MS = 80;
++
++    private static final float EDGE_ZONE = 0.15f;
++    private static final float SIDE_ZONE = 0.20f;
++    private static final float CORNER_ZONE_WIDTH = 0.30f;
++    private static final float CORNER_ZONE_HEIGHT = 0.15f;
++
++    private final WeakReference<WebContents> mWebContents;
++    private WeakReference<BraveContentView> mView = new WeakReference<>(null);
++
++    private int mTouchSlop = -1;
++    private boolean mTapCandidate;
++    private float mDownX;
++    private float mDownY;
++    private long mDownTime;
++
++    private float mTapX;
++    private float mTapY;
++    private long mTapTime = -1;
++
++    private boolean mInjecting;
++    private ScrollAnimation mAnimation;
++
++    BraveryTapToScroll(WebContents webContents) {
++        mWebContents = new WeakReference<>(webContents);
++    }
++
++    void setView(BraveContentView view) {
++        if (mView.get() != view) {
++            cancelAnimation();
++            mView = new WeakReference<>(view);
++        }
++    }
++
++    void onTouchEvent(BraveContentView view, MotionEvent event) {
++        if (mInjecting) return;
++        setView(view);
++        switch (event.getActionMasked()) {
++            case MotionEvent.ACTION_DOWN:
++                // A real finger always wins over a scroll we are still animating.
++                cancelAnimation();
++                mTapCandidate =
++                        event.getPointerCount() == 1
++                                && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER;
++                mDownX = event.getX();
++                mDownY = event.getY();
++                mDownTime = event.getEventTime();
++                break;
++            case MotionEvent.ACTION_POINTER_DOWN:
++            case MotionEvent.ACTION_CANCEL:
++                mTapCandidate = false;
++                break;
++            case MotionEvent.ACTION_MOVE:
++                if (mTapCandidate
++                        && Math.hypot(event.getX() - mDownX, event.getY() - mDownY)
++                                > getTouchSlop(view)) {
++                    mTapCandidate = false;
++                }
++                break;
++            case MotionEvent.ACTION_UP:
++                if (mTapCandidate
++                        && event.getEventTime() - mDownTime
++                                < ViewConfiguration.getLongPressTimeout()) {
++                    mTapX = event.getX();
++                    mTapY = event.getY();
++                    mTapTime = SystemClock.uptimeMillis();
++                }
++                mTapCandidate = false;
++                break;
++            default:
++                break;
++        }
++    }
++
++    @Override
++    public void onSingleTap(boolean consumed) {
++        long tapTime = mTapTime;
++        mTapTime = -1;
++        if (consumed || tapTime < 0) return;
++        if (SystemClock.uptimeMillis() - tapTime > MAX_TAP_ACK_DELAY_MS) return;
++        if (!BraveryPrefs.isTapScrollEnabled()) return;
++
++        WebContents webContents = mWebContents.get();
++        BraveContentView view = mView.get();
++        if (webContents == null || webContents.isDestroyed() || view == null) return;
++        if (BraveryPrefs.isTapScrollDisabledForSite(
++                webContents.getLastCommittedUrl().getHost())) {
++            return;
++        }
++
++        int direction =
++                zoneDirection(
++                        BraveryPrefs.getTapScrollLayout(),
++                        mTapX,
++                        mTapY,
++                        view.getWidth(),
++                        view.getHeight());
++        if (direction == 0) return;
++        if (BraveryPrefs.isTapScrollInverted()) direction = -direction;
++        startScroll(view, direction, mTapX, mTapY);
++    }
++
++    @Override
++    public void onDestroyed() {
++        cancelAnimation();
++    }
++
++    /** Returns 1 to scroll down (towards the end of the page), -1 to scroll up, 0 for no zone. */
++    static int zoneDirection(String layout, float x, float y, int width, int height) {
++        if (width <= 0 || height <= 0) return 0;
++        if (BraveryPrefs.LAYOUT_SIDES.equals(layout)) {
++            if (x < width * SIDE_ZONE) return -1;
++            if (x > width * (1 - SIDE_ZONE)) return 1;
++            return 0;
++        }
++        if (BraveryPrefs.LAYOUT_CORNERS.equals(layout)) {
++            boolean inCornerColumn =
++                    x < width * CORNER_ZONE_WIDTH || x > width * (1 - CORNER_ZONE_WIDTH);
++            if (!inCornerColumn) return 0;
++            if (y < height * CORNER_ZONE_HEIGHT) return -1;
++            if (y > height * (1 - CORNER_ZONE_HEIGHT)) return 1;
++            return 0;
++        }
++        if (y < height * EDGE_ZONE) return -1;
++        if (y > height * (1 - EDGE_ZONE)) return 1;
++        return 0;
++    }
++
++    private void startScroll(BraveContentView view, int direction, float tapX, float tapY) {
++        cancelAnimation();
++        int height = view.getHeight();
++        float margin = height * 0.04f;
++        float maxTravel = height - 2 * margin;
++        // Chromium swallows the first touch-slop of a drag before scrolling starts.
++        float travel =
++                Math.min(
++                        maxTravel,
++                        height * BraveryPrefs.getTapScrollDistance() + getTouchSlop(view));
++
++        // Scrolling down means the finger moves up the screen, and vice versa. Start at the tap
++        // so the drag targets whatever scroller is under it, shifted just enough to fit.
++        float startY = tapY;
++        float endY = startY - direction * travel;
++        if (endY < margin) {
++            startY += margin - endY;
++            endY = margin;
++        } else if (endY > height - margin) {
++            startY -= endY - (height - margin);
++            endY = height - margin;
++        }
++
++        mAnimation =
++                new ScrollAnimation(
++                        view, tapX, startY, endY, BraveryPrefs.getTapScrollDurationMs());
++        mAnimation.start();
++    }
++
++    private void cancelAnimation() {
++        if (mAnimation != null) {
++            mAnimation.cancel();
++            mAnimation = null;
++        }
++    }
++
++    private int getTouchSlop(BraveContentView view) {
++        if (mTouchSlop < 0) {
++            mTouchSlop = ViewConfiguration.get(view.getContext()).getScaledTouchSlop();
++        }
++        return mTouchSlop;
++    }
++
++    private boolean dispatch(
++            BraveContentView view, int action, float x, float y, long downTime, long eventTime) {
++        MotionEvent.PointerProperties properties = new MotionEvent.PointerProperties();
++        properties.id = 0;
++        properties.toolType = MotionEvent.TOOL_TYPE_FINGER;
++        MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
++        coords.x = x;
++        coords.y = y;
++        coords.pressure = 1f;
++        coords.size = 1f;
++        MotionEvent event =
++                MotionEvent.obtain(
++                        downTime,
++                        eventTime,
++                        action,
++                        1,
++                        new MotionEvent.PointerProperties[] {properties},
++                        new MotionEvent.PointerCoords[] {coords},
++                        /* metaState= */ 0,
++                        /* buttonState= */ 0,
++                        /* xPrecision= */ 1f,
++                        /* yPrecision= */ 1f,
++                        /* deviceId= */ 0,
++                        /* edgeFlags= */ 0,
++                        InputDevice.SOURCE_TOUCHSCREEN,
++                        /* flags= */ 0);
++        mInjecting = true;
++        try {
++            return view.onTouchEvent(event);
++        } finally {
++            mInjecting = false;
++            event.recycle();
++        }
++    }
++
++    /** Drives a synthetic one-finger drag, one step per frame, with an eased velocity profile. */
++    private final class ScrollAnimation implements Runnable {
++        private final WeakReference<BraveContentView> mTarget;
++        private final float mX;
++        private final float mStartY;
++        private final float mEndY;
++        private final long mDurationMs;
++        private long mDownTime;
++        private float mLastY;
++        private boolean mActive;
++        private final Runnable mRelease = this::release;
++
++        ScrollAnimation(
++                BraveContentView view, float x, float startY, float endY, long durationMs) {
++            mTarget = new WeakReference<>(view);
++            mX = x;
++            mStartY = startY;
++            mEndY = endY;
++            mDurationMs = Math.max(1, durationMs);
++        }
++
++        void start() {
++            BraveContentView view = mTarget.get();
++            if (view == null) return;
++            mDownTime = SystemClock.uptimeMillis();
++            mLastY = mStartY;
++            mActive = true;
++            dispatch(view, MotionEvent.ACTION_DOWN, mX, mStartY, mDownTime, mDownTime);
++            view.postOnAnimation(this);
++        }
++
++        @Override
++        public void run() {
++            BraveContentView view = mTarget.get();
++            if (!mActive || view == null) return;
++            long now = SystemClock.uptimeMillis();
++            float t = Math.min(1f, (now - mDownTime) / (float) mDurationMs);
++            mLastY = mStartY + (mEndY - mStartY) * easeInOut(t);
++            dispatch(view, MotionEvent.ACTION_MOVE, mX, mLastY, mDownTime, now);
++            if (t < 1f) {
++                view.postOnAnimation(this);
++            } else {
++                // Hold still briefly before lifting so the drag ends without a fling.
++                view.postDelayed(mRelease, RELEASE_HOLD_MS);
++            }
++        }
++
++        private void release() {
++            BraveContentView view = mTarget.get();
++            if (!mActive || view == null) return;
++            mActive = false;
++            long now = SystemClock.uptimeMillis();
++            dispatch(view, MotionEvent.ACTION_MOVE, mX, mLastY, mDownTime, now);
++            dispatch(view, MotionEvent.ACTION_UP, mX, mLastY, mDownTime, now);
++            if (mAnimation == this) mAnimation = null;
++        }
++
++        void cancel() {
++            BraveContentView view = mTarget.get();
++            if (!mActive) return;
++            mActive = false;
++            if (view == null) return;
++            view.removeCallbacks(this);
++            view.removeCallbacks(mRelease);
++            long now = SystemClock.uptimeMillis();
++            dispatch(view, MotionEvent.ACTION_CANCEL, mX, mLastY, mDownTime, now);
++        }
++
++        private float easeInOut(float t) {
++            return t < 0.5f ? 4 * t * t * t : 1 - (float) Math.pow(-2 * t + 2, 3) / 2;
++        }
++    }
++}
+diff --git a/android/java/org/chromium/chrome/browser/contextmenu/BraveChromeContextMenuPopulator.java b/android/java/org/chromium/chrome/browser/contextmenu/BraveChromeContextMenuPopulator.java
+index b576419c1..28603e2ad 100644
+--- a/android/java/org/chromium/chrome/browser/contextmenu/BraveChromeContextMenuPopulator.java
++++ b/android/java/org/chromium/chrome/browser/contextmenu/BraveChromeContextMenuPopulator.java
+@@ -10,6 +10,7 @@ import android.content.Context;
+ import androidx.browser.customtabs.CustomContentAction;
+ 
+ import org.chromium.chrome.R;
++import org.chromium.chrome.browser.bravery.BraveryContextMenu;
+ import org.chromium.chrome.browser.profiles.Profile;
+ import org.chromium.chrome.browser.share.ShareDelegate;
+ import org.chromium.chrome.browser.shields.UrlSanitizerServiceFactory;
+@@ -27,6 +28,7 @@ public class BraveChromeContextMenuPopulator extends ChromeContextMenuPopulator
+     private ContextMenuItemDelegate mItemDelegate;
+     // To be deleted via bytecode and super field to be used
+     private ContextMenuParams mParams;
++    private final Context mBraveryContext;
+ 
+     public BraveChromeContextMenuPopulator(
+             ContextMenuItemDelegate itemDelegate,
+@@ -44,6 +46,7 @@ public class BraveChromeContextMenuPopulator extends ChromeContextMenuPopulator
+                 context,
+                 params,
+                 nativeDelegate);
++        mBraveryContext = context;
+     }
+ 
+     @Override
+@@ -57,11 +60,15 @@ public class BraveChromeContextMenuPopulator extends ChromeContextMenuPopulator
+                         group, R.id.contextmenu_open_in_new_tab_in_group);
+             }
+         }
++        BraveryContextMenu.addItems(mBraveryContext, groupedItems, mItemDelegate.getWebContents());
+         return groupedItems;
+     }
+ 
+     @Override
+     public boolean onItemSelected(int itemId) {
++        if (BraveryContextMenu.onItemSelected(itemId, mParams, mItemDelegate.getWebContents())) {
++            return true;
++        }
+         if (itemId != R.id.contextmenu_copy_clean_link) {
+             return super.onItemSelected(itemId);
+         }
+diff --git a/android/java/org/chromium/chrome/browser/settings/BraveMainPreferencesBase.java b/android/java/org/chromium/chrome/browser/settings/BraveMainPreferencesBase.java
+index 505d7d2ba..e60cdbade 100644
+--- a/android/java/org/chromium/chrome/browser/settings/BraveMainPreferencesBase.java
++++ b/android/java/org/chromium/chrome/browser/settings/BraveMainPreferencesBase.java
+@@ -92,6 +92,7 @@ public abstract class BraveMainPreferencesBase extends BravePreferenceFragment
+ 
+     private static final String PREF_PRIVACY = "privacy";
+     private static final String PREF_SHIELDS_AND_PRIVACY = "brave_shields_and_privacy";
++    private static final String PREF_BRAVERY = "bravery";
+     private static final String PREF_BRAVE_SEARCH_ENGINES = "brave_search_engines";
+     @VisibleForTesting static final String PREF_BRAVE_NEWS_V2 = "brave_news_v2";
+     private static final String PREF_BRAVE_PLAYLIST = "brave_playlist";
+@@ -337,6 +338,7 @@ public abstract class BraveMainPreferencesBase extends BravePreferenceFragment
+         setPreferenceOrder(PREF_FEATURES_SECTION, ++featuresSectionOrder);
+ 
+         setPreferenceOrder(PREF_SHIELDS_AND_PRIVACY, ++featuresSectionOrder);
++        setPreferenceOrder(PREF_BRAVERY, ++featuresSectionOrder);
+         setPreferenceOrder(PREF_BRAVE_NEWS_V2, ++featuresSectionOrder);
+ 
+         setPreferenceOrder(PREF_BRAVE_WALLET, ++featuresSectionOrder);
+diff --git a/browser/android/bravery/BUILD.gn b/browser/android/bravery/BUILD.gn
+new file mode 100644
+index 000000000..cdd76e094
+--- /dev/null
++++ b/browser/android/bravery/BUILD.gn
+@@ -0,0 +1,28 @@
++# Copyright (c) 2026 The Bravery Authors. All rights reserved.
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this file,
++# You can obtain one at https://mozilla.org/MPL/2.0/.
++
++action("banner_hider_script") {
++  script = "generate_script_header.py"
++  inputs = [ "bravery_banner_hider.js" ]
++  outputs = [ "$target_gen_dir/bravery_banner_hider_script.h" ]
++  args = [
++    rebase_path("bravery_banner_hider.js", root_build_dir),
++    rebase_path("$target_gen_dir/bravery_banner_hider_script.h",
++                root_build_dir),
++    "kBraveryBannerHiderScript",
++  ]
++}
++
++source_set("bravery") {
++  sources = [ "bravery_banner_hider_android.cc" ]
++
++  deps = [
++    ":banner_hider_script",
++    "//base",
++    "//brave/build/android:jni_headers",
++    "//chrome/common",
++    "//content/public/browser",
++  ]
++}
+diff --git a/browser/android/bravery/DEPS b/browser/android/bravery/DEPS
+new file mode 100644
+index 000000000..9a7c552c3
+--- /dev/null
++++ b/browser/android/bravery/DEPS
+@@ -0,0 +1,4 @@
++include_rules = [
++  "+chrome/common/chrome_isolated_world_ids.h",
++  "+content/public/browser",
++]
+diff --git a/browser/android/bravery/bravery_banner_hider.js b/browser/android/bravery/bravery_banner_hider.js
+new file mode 100644
+index 000000000..e7f31db77
+--- /dev/null
++++ b/browser/android/bravery/bravery_banner_hider.js
+@@ -0,0 +1,299 @@
++// Copyright (c) 2026 The Bravery Authors. All rights reserved.
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this file,
++// You can obtain one at https://mozilla.org/MPL/2.0/.
++
++// Runs in Brave's internal isolated world. It shares the DOM with the page
++// but not its JavaScript globals, so `window.__bravery` is private to us and
++// survives between calls for the lifetime of the document.
++(() => {
++  // A document replaced via document.open() keeps the same window, so check
++  // which document the existing instance belongs to.
++  if (window.__bravery && window.__bravery.document === document) {
++    return
++  }
++
++  const ATTR = 'data-bravery-banner'
++  const EDGE_ATTR = 'data-bravery-edge'
++  const HIDDEN_ATTR = 'data-bravery-banners-hidden'
++  const STYLE_ID = 'bravery-banner-style'
++  // Scroll this far in one direction before banners move, like the toolbar.
++  const SCROLL_THRESHOLD = 12
++
++  const state = {
++    rules: [],
++    observer: null,
++    observedRoot: null,
++    applyScheduled: false,
++    scrollListening: false,
++    lastScroll: new WeakMap(),
++  }
++
++  function ensureStyle() {
++    if (document.getElementById(STYLE_ID)) {
++      return
++    }
++    const style = document.createElement('style')
++    style.id = STYLE_ID
++    style.textContent = `
++[${ATTR}="remove"] { display: none !important; }
++[${ATTR}="autohide"] { transition: transform 0.2s ease-out !important; }
++html[${HIDDEN_ATTR}] [${ATTR}="autohide"][${EDGE_ATTR}="top"] {
++  transform: translateY(calc(-100% - 16px)) !important;
++}
++html[${HIDDEN_ATTR}] [${ATTR}="autohide"][${EDGE_ATTR}="bottom"] {
++  transform: translateY(calc(100% + 16px)) !important;
++}`
++    ;(document.head || document.documentElement).appendChild(style)
++  }
++
++  function isPinned(el) {
++    const position = getComputedStyle(el).position
++    return position === 'fixed' || position === 'sticky'
++  }
++
++  function isRoot(el) {
++    return el === document.documentElement || el === document.body
++  }
++
++  // The outermost fixed/sticky element containing `start`, or null.
++  function bannerFor(start) {
++    let banner = null
++    for (let el = start; el && !isRoot(el); el = el.parentElement) {
++      if (el.nodeType === Node.ELEMENT_NODE && isPinned(el)) {
++        banner = el
++      }
++    }
++    return banner
++  }
++
++  function bannerAtPoint(x, y) {
++    for (const el of document.elementsFromPoint(x, y)) {
++      const banner = bannerFor(el)
++      if (banner) {
++        return banner
++      }
++    }
++    return null
++  }
++
++  // Class names that look generated (CSS-in-JS hashes etc.) change between
++  // deploys, so they make poor selectors.
++  function isStableToken(token) {
++    return (
++      token.length > 0
++      && token.length <= 40
++      && !/\d{3,}/.test(token)
++      && !/^(css|sc|jsx|emotion|styled|svelte)-/.test(token)
++      && !/^[a-zA-Z0-9_-]*[A-Z][a-zA-Z0-9_-]*[0-9][a-zA-Z0-9_-]*$/.test(token)
++    )
++  }
++
++  function isUnique(selector) {
++    try {
++      return document.querySelectorAll(selector).length === 1
++    } catch (e) {
++      return false
++    }
++  }
++
++  function selectorFor(target) {
++    if (target.id && isStableToken(target.id)) {
++      const byId = '#' + CSS.escape(target.id)
++      if (isUnique(byId)) {
++        return byId
++      }
++    }
++    const parts = []
++    for (let el = target; el && !isRoot(el) && parts.length < 6;
++         el = el.parentElement) {
++      let part = el.localName
++      const classes = Array.from(el.classList).filter(isStableToken).slice(0, 3)
++      if (classes.length) {
++        part += classes.map((c) => '.' + CSS.escape(c)).join('')
++      }
++      const parent = el.parentElement
++      if (parent) {
++        const sameTag = Array.from(parent.children)
++          .filter((c) => c.localName === el.localName)
++        if (sameTag.length > 1) {
++          part += `:nth-of-type(${sameTag.indexOf(el) + 1})`
++        }
++      }
++      parts.unshift(part)
++      const selector = parts.join(' > ')
++      if (isUnique(selector)) {
++        return selector
++      }
++    }
++    return null
++  }
++
++  function edgeFor(el) {
++    const rect = el.getBoundingClientRect()
++    return rect.top + rect.height / 2 < window.innerHeight / 2 ? 'top' : 'bottom'
++  }
++
++  function unlockScrollIfBlocked(el) {
++    // Cookie walls and sign-up modals often freeze page scrolling. If we
++    // removed a large overlay, let the page scroll again.
++    const rect = el.getBoundingClientRect()
++    const coverage = (rect.width * rect.height)
++      / (window.innerWidth * window.innerHeight)
++    if (coverage < 0.4) {
++      return
++    }
++    for (const root of [document.documentElement, document.body]) {
++      if (root && getComputedStyle(root).overflowY === 'hidden') {
++        root.style.setProperty('overflow', 'auto', 'important')
++      }
++    }
++  }
++
++  function mark(el, mode) {
++    if (el.getAttribute(ATTR) === mode) {
++      return
++    }
++    if (mode === 'remove') {
++      unlockScrollIfBlocked(el)
++    } else {
++      el.setAttribute(EDGE_ATTR, edgeFor(el))
++      listenForScroll()
++    }
++    el.setAttribute(ATTR, mode)
++  }
++
++  function onScroll(event) {
++    const target = event.target
++    const isDocument = target === document || target === document.documentElement
++      || target === document.scrollingElement
++    const key = isDocument ? document : target
++    const position = isDocument ? window.scrollY : target.scrollTop
++    if (!state.lastScroll.has(key)) {
++      state.lastScroll.set(key, isDocument ? 0 : position)
++    }
++    const delta = position - state.lastScroll.get(key)
++    if (Math.abs(delta) < SCROLL_THRESHOLD && position > 0) {
++      return
++    }
++    state.lastScroll.set(key, position)
++    const hide = position > 0 && delta > 0
++    document.documentElement.toggleAttribute(HIDDEN_ATTR, hide)
++  }
++
++  function listenForScroll() {
++    if (state.scrollListening) {
++      return
++    }
++    state.scrollListening = true
++    document.addEventListener('scroll', onScroll, { capture: true, passive: true })
++  }
++
++  function applyRulesNow() {
++    state.applyScheduled = false
++    for (const rule of state.rules) {
++      let matches
++      try {
++        matches = document.querySelectorAll(rule.s)
++      } catch (e) {
++        continue
++      }
++      for (const el of matches) {
++        mark(el, rule.m)
++      }
++    }
++  }
++
++  function scheduleApply() {
++    if (state.applyScheduled) {
++      return
++    }
++    state.applyScheduled = true
++    setTimeout(applyRulesNow, 200)
++  }
++
++  function watchForNewBanners() {
++    // document.open() keeps the document but replaces its root element.
++    const root = document.documentElement
++    if (state.observer && state.observedRoot === root) {
++      return
++    }
++    if (state.observer) {
++      state.observer.disconnect()
++    }
++    // Banners are often inserted after load, and frameworks may re-render
++    // them without our attributes.
++    state.observer = new MutationObserver(scheduleApply)
++    state.observedRoot = root
++    state.observer.observe(root, { childList: true, subtree: true })
++  }
++
++  function hide(banner, mode) {
++    if (!banner) {
++      return JSON.stringify({ ok: false })
++    }
++    ensureStyle()
++    mark(banner, mode)
++    const selector = selectorFor(banner)
++    if (selector) {
++      state.rules = state.rules.filter((r) => r.s !== selector)
++      state.rules.push({ s: selector, m: mode })
++      watchForNewBanners()
++    }
++    return JSON.stringify({ ok: true, selector, mode })
++  }
++
++  window.__bravery = {
++    document,
++
++    // `x` and `y` are physical pixels relative to the page view.
++    hideAt(x, y, mode) {
++      const viewport = window.visualViewport
++      const scale = viewport ? viewport.scale : 1
++      const cssX = x / window.devicePixelRatio / scale
++        + (viewport ? viewport.offsetLeft : 0)
++      const cssY = y / window.devicePixelRatio / scale
++        + (viewport ? viewport.offsetTop : 0)
++      return hide(bannerAtPoint(cssX, cssY), mode)
++    },
++
++    hideSelection(mode) {
++      const selection = window.getSelection()
++      if (!selection || selection.rangeCount === 0) {
++        return JSON.stringify({ ok: false })
++      }
++      let node = selection.getRangeAt(0).commonAncestorContainer
++      if (node.nodeType !== Node.ELEMENT_NODE) {
++        node = node.parentElement
++      }
++      const result = hide(node ? bannerFor(node) : null, mode)
++      selection.removeAllRanges()
++      return result
++    },
++
++    applyRules(rules) {
++      if (!Array.isArray(rules) || rules.length === 0) {
++        return ''
++      }
++      state.rules = rules.filter((r) => r && typeof r.s === 'string')
++      ensureStyle()
++      applyRulesNow()
++      watchForNewBanners()
++      return ''
++    },
++
++    reset() {
++      state.rules = []
++      if (state.observer) {
++        state.observer.disconnect()
++        state.observer = null
++      }
++      for (const el of document.querySelectorAll(`[${ATTR}]`)) {
++        el.removeAttribute(ATTR)
++        el.removeAttribute(EDGE_ATTR)
++      }
++      document.documentElement.removeAttribute(HIDDEN_ATTR)
++      return ''
++    },
++  }
++})()
+diff --git a/browser/android/bravery/bravery_banner_hider_android.cc b/browser/android/bravery/bravery_banner_hider_android.cc
+new file mode 100644
+index 000000000..c226b8b95
+--- /dev/null
++++ b/browser/android/bravery/bravery_banner_hider_android.cc
+@@ -0,0 +1,61 @@
++/* Copyright (c) 2026 The Bravery Authors. All rights reserved.
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at https://mozilla.org/MPL/2.0/. */
++
++#include <string>
++#include <utility>
++
++#include "base/android/callback_android.h"
++#include "base/android/jni_android.h"
++#include "base/android/jni_string.h"
++#include "base/functional/bind.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/values.h"
++#include "brave/browser/android/bravery/bravery_banner_hider_script.h"
++#include "chrome/android/chrome_jni_headers/BraveryBannerHider_jni.h"
++#include "chrome/common/chrome_isolated_world_ids.h"
++#include "content/public/browser/render_frame_host.h"
++#include "content/public/browser/web_contents.h"
++
++namespace bravery {
++
++namespace {
++
++void OnScriptResult(base::android::ScopedJavaGlobalRef<jobject> callback,
++                    base::Value result) {
++  base::android::RunStringCallbackAndroid(
++      callback, result.is_string() ? result.GetString() : std::string());
++}
++
++}  // namespace
++
++// Runs `script` in the main frame's Brave-internal isolated world, defining
++// the banner hider first if this document has not seen it yet.
++static void JNI_BraveryBannerHider_RunScript(
++    JNIEnv* env,
++    const base::android::JavaRef<jobject>& jweb_contents,
++    const base::android::JavaRef<jstring>& jscript,
++    const base::android::JavaRef<jobject>& jcallback) {
++  base::android::ScopedJavaGlobalRef<jobject> callback(jcallback);
++  content::WebContents* web_contents =
++      content::WebContents::FromJavaWebContents(jweb_contents);
++  content::RenderFrameHost* rfh =
++      web_contents ? web_contents->GetPrimaryMainFrame() : nullptr;
++  if (!rfh || !rfh->IsRenderFrameLive()) {
++    base::android::RunStringCallbackAndroid(callback, std::string());
++    return;
++  }
++
++  std::u16string script(kBraveryBannerHiderScript);
++  script += u";\n";
++  script += base::UTF8ToUTF16(base::android::ConvertJavaStringToUTF8(env, jscript));
++
++  rfh->ExecuteJavaScriptInIsolatedWorld(
++      script, base::BindOnce(&OnScriptResult, std::move(callback)),
++      ISOLATED_WORLD_ID_BRAVE_INTERNAL);
++}
++
++}  // namespace bravery
++
++DEFINE_JNI(BraveryBannerHider)
+diff --git a/browser/android/bravery/generate_script_header.py b/browser/android/bravery/generate_script_header.py
+new file mode 100644
+index 000000000..9f8edef36
+--- /dev/null
++++ b/browser/android/bravery/generate_script_header.py
+@@ -0,0 +1,28 @@
++#!/usr/bin/env python3
++# Copyright (c) 2026 The Bravery Authors. All rights reserved.
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this file,
++# You can obtain one at https://mozilla.org/MPL/2.0/.
++"""Wraps a JavaScript file into a C++ header as a UTF-16 raw string."""
++
++import sys
++
++DELIMITER = 'js'
++
++
++def main(source_path, header_path, variable):
++    with open(source_path, encoding='utf-8') as f:
++        script = f.read()
++    if ')' + DELIMITER + '"' in script:
++        raise ValueError(f'{source_path} contains the raw string terminator')
++    guard = 'BRAVERY_' + variable.upper() + '_H_'
++    with open(header_path, 'w', encoding='utf-8') as f:
++        f.write(f'// Generated from {source_path}. Do not edit.\n')
++        f.write(f'#ifndef {guard}\n#define {guard}\n\n')
++        f.write(f'inline constexpr char16_t {variable}[] = uR"{DELIMITER}(')
++        f.write(script)
++        f.write(f'){DELIMITER}";\n\n#endif  // {guard}\n')
++
++
++if __name__ == '__main__':
++    main(*sys.argv[1:])
+diff --git a/browser/sources.gni b/browser/sources.gni
+index 57f846273..ff1ff06f9 100644
+--- a/browser/sources.gni
++++ b/browser/sources.gni
+@@ -645,6 +645,7 @@ if (is_android) {
+     "//brave/browser/android:android_browser_process",
+     "//brave/browser/android:tabs_impl",
+     "//brave/browser/android/preferences",
++    "//brave/browser/android/bravery",
+     "//brave/browser/android/safe_browsing:buildflags",
+     "//brave/browser/android/youtube_script_injector",
+     "//brave/browser/android/youtube_script_injector:features",
+diff --git a/build/android/config.gni b/build/android/config.gni
+index a66d9dec9..ba644dad1 100644
+--- a/build/android/config.gni
++++ b/build/android/config.gni
+@@ -143,6 +143,7 @@ brave_jni_headers_sources = [
+   "//brave/android/java/org/chromium/chrome/browser/BraveRewardsNativeWorker.java",
+   "//brave/android/java/org/chromium/chrome/browser/BraveSyncWorker.java",
+   "//brave/android/java/org/chromium/chrome/browser/app/BraveActivity.java",
++  "//brave/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java",
+   "//brave/android/java/org/chromium/chrome/browser/bookmarks/BraveBookmarkBridge.java",
+   "//brave/android/java/org/chromium/chrome/browser/brave_leo/BraveLeoMojomHelper.java",
+   "//brave/android/java/org/chromium/chrome/browser/brave_leo/BraveLeoUtils.java",
+diff --git a/components/embedder_support/android/java/src/org/chromium/components/embedder_support/view/BraveContentView.java b/components/embedder_support/android/java/src/org/chromium/components/embedder_support/view/BraveContentView.java
+index 9e5f408ba..785493e15 100644
+--- a/components/embedder_support/android/java/src/org/chromium/components/embedder_support/view/BraveContentView.java
++++ b/components/embedder_support/android/java/src/org/chromium/components/embedder_support/view/BraveContentView.java
+@@ -6,6 +6,7 @@
+ package org.chromium.components.embedder_support.view;
+ 
+ import android.content.Context;
++import android.view.MotionEvent;
+ import android.view.ViewStructure;
+ 
+ import org.chromium.base.JavaExceptionReporter;
+@@ -15,8 +16,43 @@ import org.chromium.content_public.browser.WebContents;
+ 
+ /** That class extends upstream's ContentView.java to prevent a browser process crash */
+ public class BraveContentView extends ContentView {
++    /**
++     * Bravery: lets the chrome layer observe page touches and WebContents changes without this
++     * component depending on it. Installed once at startup by BraveryController.
++     */
++    public interface BraveryHook {
++        void onWebContentsAttached(BraveContentView view, WebContents webContents);
++
++        void onTouchEvent(BraveContentView view, MotionEvent event);
++    }
++
++    private static BraveryHook sBraveryHook;
++
++    public static void setBraveryHook(BraveryHook hook) {
++        sBraveryHook = hook;
++    }
++
+     protected BraveContentView(Context context, WebContents webContents) {
+         super(context, webContents);
++        notifyWebContentsAttached(webContents);
++    }
++
++    @Override
++    public void setWebContents(WebContents webContents) {
++        super.setWebContents(webContents);
++        notifyWebContentsAttached(webContents);
++    }
++
++    @Override
++    public boolean onTouchEvent(MotionEvent event) {
++        if (sBraveryHook != null) sBraveryHook.onTouchEvent(this, event);
++        return super.onTouchEvent(event);
++    }
++
++    private void notifyWebContentsAttached(WebContents webContents) {
++        if (sBraveryHook != null && webContents != null) {
++            sBraveryHook.onWebContentsAttached(this, webContents);
++        }
+     }
+ 
+     @Override
+diff --git a/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml b/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
+new file mode 100644
+index 000000000..30f9ee50d
+--- /dev/null
++++ b/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
+@@ -0,0 +1,20 @@
++# Copyright (c) 2026 The Bravery Authors. All rights reserved.
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this file,
++# You can obtain one at https://mozilla.org/MPL/2.0/.
++
++substitutions:
++  - description: |
++      Bravery: let the toolbar auto-hide while accessibility services run
++
++      Upstream pins the browser controls whenever any accessibility service
++      that can perform gestures is enabled (LockReason.A11Y_ENABLED). Gesture
++      helpers, button remappers and similar apps then leave the URL bar stuck
++      on screen. Bravery makes this lock a setting, on by default.
++    regex:
++      pattern: |-
++        if (ChromeAccessibilityUtil.get().isAccessibilityEnabled()) {
++      replace: |-
++        if (ChromeAccessibilityUtil.get().isAccessibilityEnabled()
++                        && !org.chromium.chrome.browser.bravery.BraveryPrefs
++                                .shouldHideToolbarWithAccessibility()) {
+diff --git a/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml b/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
+new file mode 100644
+index 000000000..f2c8c314d
+--- /dev/null
++++ b/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
+@@ -0,0 +1,25 @@
++# Copyright (c) 2026 The Bravery Authors. All rights reserved.
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this file,
++# You can obtain one at https://mozilla.org/MPL/2.0/.
++
++substitutions:
++  - description: |
++      Bravery: report taps the page reacted to as handled
++
++      Tap-to-scroll only scrolls on taps the page ignored, using the
++      "consumed" bit content reports for each GestureTap. Links and form
++      submits already count as handled, but a click on a plain button or a
++      script-driven widget does not. Treat a tap as handled when click
++      dispatch changed the DOM or styles, or when it landed inside a
++      focusable element or ARIA widget (the same signals Contextual Search
++      uses to tell "did the page respond?").
++    regex:
++      re_pattern: '(\n(\s*)ShowUnhandledTapUIIfNeeded\(dom_tree_changed, style_changed, tapped_node,\s*tapped_position_in_viewport\);\n)'
++      replace: |
++        \1#if BUILDFLAG(ENABLE_UNHANDLED_TAP)
++        \2if (dom_tree_changed || style_changed ||
++        \2    WebNode(tapped_node).IsInsideFocusableElementOrARIAWidget()) {
++        \2  event_result = WebInputEventResult::kHandledSystem;
++        \2}
++        #endif  // BUILDFLAG(ENABLE_UNHANDLED_TAP)
