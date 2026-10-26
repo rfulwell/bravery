@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 25 Oct 2026 19:32:13 +0000
-Subject: [PATCH 2/2] Bravery: tap to scroll, banner hiding and toolbar
+Subject: [PATCH 2/3] Bravery: tap to scroll, banner hiding and toolbar
  auto-hide
 
 Tap to scroll: BraveContentView reports page touches to BraveryController.

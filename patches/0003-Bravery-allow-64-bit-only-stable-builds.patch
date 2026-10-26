@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 26 Oct 2026 03:01:14 +0000
+Subject: [PATCH 3/3] Bravery: allow 64-bit-only stable builds
+
+Chromium's binary-size expectation checks reference the 32-bit and
+64/32-bit Trichrome and WebView variants, which only exist with
+enable_android_secondary_abi. Skip them when it's off, so a 64-bit-only
+build (all a Pixel 7 or later can run) passes gn gen.
+---
+ .../android/expectations/expectations.gni.yaml | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+ create mode 100644 rewrite/chrome/android/expectations/expectations.gni.yaml
+
+diff --git a/rewrite/chrome/android/expectations/expectations.gni.yaml b/rewrite/chrome/android/expectations/expectations.gni.yaml
+new file mode 100644
+index 000000000..2edd5b07d
+--- /dev/null
++++ b/rewrite/chrome/android/expectations/expectations.gni.yaml
+@@ -0,0 +1,18 @@
++# Copyright (c) 2026 The Bravery Authors. All rights reserved.
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this file,
++# You can obtain one at https://mozilla.org/MPL/2.0/.
++
++substitutions:
++  - description: |
++      Bravery: allow 64-bit-only stable builds
++
++      The binary-size expectation checks reference the 32-bit and 64/32-bit
++      Trichrome and WebView variants, which only exist when
++      enable_android_secondary_abi is on. Bravery builds 64-bit only (modern
++      Pixels can't run 32-bit code), so skip those checks then; otherwise
++      `gn gen` fails with unresolved dependencies.
++    count: 2
++    regex:
++      pattern: 'android_channel == "stable")'
++      replace: 'android_channel == "stable") && enable_android_secondary_abi'
