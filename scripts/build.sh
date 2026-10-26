@@ -51,13 +51,15 @@ fi
 chmod 600 .env
 
 # --- 3. Chromium + Brave's own patches -----------------------------------------
+# --no-history: shallow Chromium checkout, tens of GB and hours less to fetch.
 SYNC_ARGS=(--target_os=android "--target_arch=$ARCH")
+FETCH_ARGS=(--no-history)
 if [[ ! -d "$BRAVERY_SRC/.git" || ! -d vendor/depot_tools ]]; then
   log "First run: fetching Chromium (tens of GB, this takes a while)"
-  pnpm run init "${SYNC_ARGS[@]}"
+  pnpm run init "${SYNC_ARGS[@]}" "${FETCH_ARGS[@]}"
 else
   log "Syncing Chromium and dependencies for $TAG"
-  pnpm run sync "${SYNC_ARGS[@]}" -D
+  pnpm run sync "${SYNC_ARGS[@]}" "${FETCH_ARGS[@]}" -D
 fi
 export PATH="$BRAVERY_BRAVE_CORE/vendor/depot_tools:$PATH"
 
@@ -103,6 +105,16 @@ BUILD_ARGS=(
   --target_android_output_format=apk
   "--android_override_version_name=$VERSION-bravery$BRAVERY_REVISION"
   --gn=chrome_public_manifest_package:com.brave.browser_bravery
+  # Trimmed to what a modern 64-bit-only phone (e.g. Pixel 7 and later) needs:
+  # official builds otherwise compile all native code a second time for
+  # 32-bit ARM.
+  --gn=enable_android_secondary_abi:false
+  # No debug symbols: faster compiles, much faster and lighter links. Only
+  # matters for symbolizing native crash dumps, which Bravery doesn't upload.
+  --gn=symbol_level:0
+  # Skip Java lint and static analysis; Brave's CI already runs them.
+  --gn=android_static_analysis:off
+  --gn=disable_android_lint:true
 )
 if [[ "$BRAVERY_OFFICIAL_BUILD" != 1 ]]; then
   BUILD_ARGS+=(--gn=is_official_build:false --gn=dcheck_always_on:false)

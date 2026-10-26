@@ -79,6 +79,14 @@ Obtainium on your phone installs the update
   patches): Brave's regex rewriting tool, made for surviving Chromium upgrades.
   There are two: the accessibility toolbar lock, and making Blink count a tap
   as handled when the page visibly reacted to it.
+- **Only what a Pixel needs is built:** Android, 64-bit ARM, one APK. The 32-bit
+  copy of the native code (which official builds include by default, roughly
+  doubling native compile time) is skipped, as are debug symbols, Java lint and
+  static analysis. The Chromium checkout is shallow. The result runs on any
+  64-bit-only phone, such as a Pixel 7 or newer. Brave's local-build defaults
+  also avoid rebuilding thousands of files just because the version changed. One
+  side effect is that `brave://version` shows e.g. `1.98.0` instead of `1.98.61`.
+  The installed app and the release tag still show the full version.
 - All the checking happens on GitHub's free runners. Your machine never polls;
   it only works when there's a new release to build.
 - **`check-patches.yml`** also runs daily on free runners, testing the patches
@@ -159,10 +167,11 @@ sleeping when the display is off**. Docker Desktop only runs while you're
 logged in.
 
 **Memory:** 64 GB is enough, but the container gets less than that after macOS
-takes its share. For the first build, set `BRAVERY_OFFICIAL_BUILD=0` and
-`BRAVERY_CONCURRENT_LINKS=1` in `~/.bravery/bravery.conf`. Once that works you
-can try `BRAVERY_OFFICIAL_BUILD=1`, which is slightly faster at runtime and needs
-the most memory when linking.
+takes its share. Bravery builds without debug symbols, which keeps links far
+lighter. Still, for the first build set `BRAVERY_OFFICIAL_BUILD=0` and
+`BRAVERY_CONCURRENT_LINKS=1` in `~/.bravery/bravery.conf`. Once that works, try
+`BRAVERY_OFFICIAL_BUILD=1`. It's a little faster on the phone, but compiles
+noticeably slower and needs the most memory when linking.
 
 **Setup**, in Terminal on the Mac:
 
