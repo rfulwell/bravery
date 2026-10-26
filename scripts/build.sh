@@ -44,6 +44,10 @@ service_key_search=${BRAVERY_SERVICE_KEY_SEARCH:-$PLACEHOLDER}
 service_key_aichat=${BRAVERY_SERVICE_KEY_AICHAT:-$PLACEHOLDER}
 service_key_stt=${BRAVERY_SERVICE_KEY_STT:-$PLACEHOLDER}
 EOF
+if [[ -n "${BRAVERY_CONCURRENT_LINKS:-}" ]]; then
+  # Each link of the main library can need 10+ GB, more with LTO.
+  echo "concurrent_links=$BRAVERY_CONCURRENT_LINKS" >> .env
+fi
 chmod 600 .env
 
 # --- 3. Chromium + Brave's own patches -----------------------------------------
@@ -57,7 +61,9 @@ else
 fi
 export PATH="$BRAVERY_BRAVE_CORE/vendor/depot_tools:$PATH"
 
-DEPS_MARKER="$BRAVERY_WORKDIR/.install-build-deps-done"
+# The Docker image installs these at image build time and leaves this marker.
+[[ -f /etc/bravery/build-deps-done ]] && BRAVERY_DEPS_MARKER=/etc/bravery/build-deps-done
+DEPS_MARKER="${BRAVERY_DEPS_MARKER:-$BRAVERY_WORKDIR/.install-build-deps-done}"
 if [[ ! -f "$DEPS_MARKER" ]]; then
   if sudo -n true 2>/dev/null; then
     log "Installing Chromium's Android build dependencies"

@@ -1,0 +1,29 @@
+# Bravery build container for Docker Desktop. From this directory:
+#   docker compose build
+#   docker compose run --rm bravery setup
+#   docker compose run --rm bravery register <token>
+#   docker compose up -d
+services:
+  bravery:
+    build: .
+    image: bravery-builder
+    platform: linux/amd64
+    restart: unless-stopped
+    init: true
+    shm_size: 2gb
+    ulimits:
+      nofile: 65536
+    environment:
+      BRAVERY_REPO: ${BRAVERY_REPO:-rfulwell/bravery}
+      RUNNER_NAME: ${RUNNER_NAME:-bravery-docker}
+    volumes:
+      # Brave + Chromium checkout and build output (~350 GB). A Docker volume,
+      # not a Mac folder: it is much faster and case-sensitive, as Chromium needs.
+      - build:/home/bravery/bravery-build
+      - runner:/home/bravery/actions-runner
+      # Config and signing key stay on the Mac, where your backups can see them.
+      - ${BRAVERY_SECRETS_DIR:-${HOME}/.bravery}:/home/bravery/.bravery
+
+volumes:
+  build:
+  runner:

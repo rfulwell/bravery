@@ -22,6 +22,10 @@ BRAVERY_KEY_PASSWORD=
 # 0 = regular release build (fine on 32 GB, builds faster, runs a bit slower).
 BRAVERY_OFFICIAL_BUILD=1
 
+# How many link steps may run at once. Links are the memory peaks; set 1 if a
+# build gets killed for lack of memory (e.g. inside Docker Desktop).
+BRAVERY_CONCURRENT_LINKS=
+
 # Brave's official builds embed private service keys (used by Sync, the
 # filter-list updater and a few other Brave services). Custom builds don't
 # have them. Leave empty to use a placeholder; set them only if you have

@@ -6,7 +6,7 @@ source "$(dirname "$0")/common.sh"
 KEYSTORE="${1:-$HOME/.bravery/bravery.keystore}"
 [[ -e "$KEYSTORE" ]] && die "$KEYSTORE already exists; refusing to overwrite your signing key"
 mkdir -p "$(dirname "$KEYSTORE")"
-chmod 700 "$(dirname "$KEYSTORE")"
+chmod 700 "$(dirname "$KEYSTORE")" 2>/dev/null || true  # may be a bind mount
 
 read -rsp 'New keystore password (min 6 chars): ' PASS; echo
 keytool -genkeypair -v -keystore "$KEYSTORE" -alias bravery \

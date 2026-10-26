@@ -88,6 +88,8 @@ Obtainium on your phone installs the update
 
 ## Setting up the build machine
 
+Using Docker Desktop on a Mac? Skip to [Building on a Mac with Docker Desktop](#building-on-a-mac-with-docker-desktop).
+
 You need an x86-64 Ubuntu 22.04/24.04 VM with 16+ cores, 64 GB RAM (or 32 GB
 with `BRAVERY_OFFICIAL_BUILD=0`) and about 400 GB of SSD. The first build
 downloads around 100 GB and takes several hours. Later builds reuse the checkout
@@ -132,6 +134,66 @@ machine if you run the scripts by hand.
 Prefer no runner? `scripts/auto-update.sh` does the same check, build and
 publish by itself, from cron or the systemd units in `config/systemd/`. In that
 setup the machine polls instead of GitHub, and it needs `gh auth login`.
+
+## Building on a Mac with Docker Desktop
+
+`docker/` packages the whole build machine, including the GitHub runner, as a
+container. Chromium's Android toolchain only exists for x86-64 Linux, so the
+container is always `linux/amd64`. On an Intel Mac it runs natively. On Apple
+Silicon, Docker Desktop runs it through Rosetta, which works but is slower than
+native (rough guess: 30–50% slower).
+
+**Docker Desktop settings**
+
+| Setting | Value |
+| --- | --- |
+| General → *Use Rosetta for x86_64/amd64 emulation on Apple Silicon* | On. Without it, QEMU emulation would take days per build. |
+| General → *Start Docker Desktop when you sign in* | On |
+| Resources → Memory | 48–56 GB of your 64 GB |
+| Resources → CPU | All cores |
+| Resources → Swap | 4 GB or more |
+| Resources → Disk usage limit | 400 GB or more. The disk image can live on an external SSD (Resources → Advanced). |
+
+Also keep the Mac awake: **System Settings → Energy → Prevent automatic
+sleeping when the display is off**. Docker Desktop only runs while you're
+logged in.
+
+**Memory:** 64 GB is enough, but the container gets less than that after macOS
+takes its share. For the first build, set `BRAVERY_OFFICIAL_BUILD=0` and
+`BRAVERY_CONCURRENT_LINKS=1` in `~/.bravery/bravery.conf`. Once that works you
+can try `BRAVERY_OFFICIAL_BUILD=1`, which is slightly faster at runtime and needs
+the most memory when linking.
+
+**Setup**, in Terminal on the Mac:
+
+```bash
+git clone https://github.com/rfulwell/bravery ~/bravery
+cd ~/bravery/docker
+mkdir -p ~/.bravery                          # config + signing key live here, on the Mac
+docker compose build                         # ~10 minutes
+docker compose run --rm bravery setup        # creates bravery.conf and the signing key
+nano ~/.bravery/bravery.conf                 # keystore password, BRAVERY_OFFICIAL_BUILD=0, BRAVERY_CONCURRENT_LINKS=1
+```
+
+Then connect it to GitHub. In the repo, open **Settings → Actions → Runners →
+New self-hosted runner** and copy only the token from the `./config.sh` line:
+
+```bash
+docker compose run --rm bravery register <token>
+docker compose up -d                         # runner starts now and with Docker Desktop
+```
+
+Start the first build from **Actions → Watch for Brave releases → Run workflow**.
+Follow it in the Actions tab or with `docker compose logs -f`. The Brave and
+Chromium checkout (~350 GB with build output) lives in a Docker volume, not in a
+Mac folder. A volume is much faster, and Chromium needs a case-sensitive
+filesystem. Your config and key stay in `~/.bravery`, so include that folder in
+your backups.
+
+Other commands: `docker compose run --rm bravery build [vX.Y.Z]` builds and
+publishes without GitHub Actions (run `gh auth login` in
+`docker compose run --rm bravery shell` first), and `... shell` opens a shell in
+the build environment.
 
 ## Installing on your phone
 
@@ -183,6 +245,7 @@ version that's already published, for example after a patch fix, bump
 | `scripts/make-keystore.sh` | One-time signing key |
 | `scripts/export-patches.sh` | Write patches back after editing them in brave-core |
 | `config/` | Config template; systemd units for the no-runner setup |
+| `docker/` | Build machine as a container (Docker Desktop on a Mac) |
 
 ## Where the code lives (inside the patches)
 
