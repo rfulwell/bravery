@@ -51,10 +51,11 @@ fi
 cat >&2 <<EOF
 
 Next steps:
-  1. gh auth login                       (needs write access to the Bravery repo)
-  2. scripts/make-keystore.sh            (then put the password in $BRAVERY_CONF)
-  3. scripts/auto-update.sh              (first run downloads ~100 GB and builds for hours;
-                                          it stops once to ask you to run Chromium's
-                                          install-build-deps.sh with sudo)
-  4. Schedule scripts/auto-update.sh     (see README: cron or systemd timer)
+  1. scripts/make-keystore.sh            (then put the password in $BRAVERY_CONF)
+  2. Register this machine as a GitHub self-hosted runner with the label
+     "bravery" and install it as a service (see README, "Connecting the
+     machine to GitHub")
+  3. Actions -> Watch for Brave releases -> Run workflow, to queue the first
+     build. It downloads ~100 GB and builds for hours, and stops once to ask
+     you to run Chromium's install-build-deps.sh with sudo.
 EOF

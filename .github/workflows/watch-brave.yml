@@ -1,0 +1,66 @@
+# Runs on GitHub's free runners every 4 hours. When Brave publishes a stable
+# release that Bravery hasn't been built for, it checks the patches still apply
+# (no compiling) and then queues "Build Bravery" for your build machine. Your
+# machine never polls; it only works when there is something to build.
+name: Watch for Brave releases
+
+on:
+  schedule:
+    - cron: '23 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: watch-brave
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is there a new Brave release to build?
+        id: brave
+        run: |
+          tag="$(scripts/latest-brave-release.sh release)"
+          release="v${tag#v}-bravery$(tr -d '[:space:]' < BRAVERY_REVISION)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          if gh release view "$release" >/dev/null 2>&1; then
+            echo "$release is already published."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$(gh run list --workflow build.yml --json status \
+              --jq '.[] | select(.status != "completed") | .status')" ]; then
+            echo "A build is already queued or running."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Brave $tag has no Bravery release yet."
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the patches apply to ${{ steps.brave.outputs.tag }}
+        id: check
+        if: steps.brave.outputs.needed == 'true'
+        run: |
+          pip install pyyaml
+          scripts/check-patches.sh "${{ steps.brave.outputs.tag }}"
+
+      - name: Queue the build on your machine
+        if: steps.brave.outputs.needed == 'true'
+        run: gh workflow run build.yml -f brave_tag="${{ steps.brave.outputs.tag }}"
+
+      - name: Open an issue
+        if: failure() && steps.check.outcome == 'failure'
+        run: |
+          title="Bravery patches need updating for Brave ${{ steps.brave.outputs.tag }}"
+          if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')" ]; then
+            gh issue create --title "$title" \
+              --body "The patches no longer apply, so no build was queued. See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi

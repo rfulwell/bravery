@@ -54,21 +54,23 @@ regular Brave app keeps working either way, since Bravery is a separate app.
 ## How it works
 
 ```
-Brave release ──► auto-update.sh (cron/systemd on your VM)
-                    │  latest stable tag from github.com/brave/brave-browser
-                    │  already published? → stop
-                    ▼
-                  build.sh
-                    1. brave-core @ tag, Chromium synced by Brave's tooling
-                    2. git am patches/*.patch           (Bravery's changes)
-                    3. plaster rules → Chromium patches  (regex rewrites, rebase-friendly)
-                    4. pnpm run build Release (android, arm64, apk,
-                       package com.brave.browser_bravery)
-                    5. apksigner with your key
-                    ▼
-                  publish.sh → GitHub release v1.98.61-bravery1 (+ APK)
-                    ▼
-                  Obtainium on your phone installs the update
+GitHub's free runners, every 4 hours (watch-brave.yml)
+  latest stable tag from github.com/brave/brave-browser
+  already published, or a build already queued? → stop
+  patches still apply? (no compiling) → no: open an issue, stop
+  → queue "Build Bravery"
+        ▼
+Your machine, as a self-hosted runner (build.yml → auto-update.sh)
+  build.sh
+    1. brave-core @ tag, Chromium synced by Brave's tooling
+    2. git am patches/*.patch           (Bravery's changes)
+    3. plaster rules → Chromium patches  (regex rewrites, rebase-friendly)
+    4. pnpm run build Release (android, arm64, apk,
+       package com.brave.browser_bravery)
+    5. apksigner with your key
+  publish.sh → GitHub release v1.98.61-bravery1 (+ APK)
+        ▼
+Obtainium on your phone installs the update
 ```
 
 - **`patches/`** is a `git format-patch` series against brave-core. Most changes
@@ -77,9 +79,11 @@ Brave release ──► auto-update.sh (cron/systemd on your VM)
   patches): Brave's regex rewriting tool, made for surviving Chromium upgrades.
   There are two: the accessibility toolbar lock, and making Blink count a tap
   as handled when the page visibly reacted to it.
-- **`check-patches.yml`** runs daily on free GitHub runners. It tests the patches
-  against Brave's latest **stable and beta** releases without building, and opens
-  an issue if they stop applying. Beta gives you weeks of warning.
+- All the checking happens on GitHub's free runners. Your machine never polls;
+  it only works when there's a new release to build.
+- **`check-patches.yml`** also runs daily on free runners, testing the patches
+  against Brave's latest **beta** as well as stable. Beta gives you weeks of
+  warning before a stable release would need a patch fix.
 - If the build itself fails, `auto-update.sh` opens an issue with the end of the log.
 
 ## Setting up the build machine
@@ -93,10 +97,8 @@ and are much faster.
 git clone https://github.com/rfulwell/bravery ~/bravery
 cd ~/bravery
 scripts/setup-build-machine.sh      # packages, Node 24, pnpm, gh; creates ~/.bravery/bravery.conf
-gh auth login                       # needs write access to this repo (releases, issues)
 scripts/make-keystore.sh            # your signing key; put its password in bravery.conf
 $EDITOR ~/.bravery/bravery.conf
-scripts/auto-update.sh              # first full build + release
 ```
 
 > [!IMPORTANT]
@@ -104,25 +106,32 @@ scripts/auto-update.sh              # first full build + release
 > an update signed with the same key, so losing the key means uninstalling Bravery
 > and losing its data.
 
-The first run stops once and asks you to run Chromium's
-`install-build-deps.sh --android` with sudo (unless passwordless sudo is set up).
+The first build stops once and asks you to run Chromium's
+`install-build-deps.sh --android` with sudo, unless passwordless sudo is set up.
 
-### Scheduling
+### Connecting the machine to GitHub
 
-Choose one of these.
+Register the machine as a self-hosted runner so GitHub can hand it builds:
 
-- **systemd timer (recommended):** copy `config/systemd/bravery-update.*` to
-  `~/.config/systemd/user/`, then run
-  `systemctl --user enable --now bravery-update.timer` and
-  `sudo loginctl enable-linger $USER`. This checks every 6 hours.
-- **cron:** `0 3 * * * $HOME/bravery/scripts/auto-update.sh >> $HOME/bravery-update.log 2>&1`
-- **VM that only boots on a schedule:** run `scripts/auto-update.sh` at boot and
-  set `BRAVERY_SHUTDOWN_WHEN_DONE=1` so the VM powers off when it finishes.
-- **GitHub Actions:** register the VM as a self-hosted runner with the label
-  `bravery`, and `.github/workflows/build.yml` runs the same script.
+1. In the repo, open **Settings → Actions → Runners → New self-hosted runner**,
+   choose Linux x64, and run the download and `./config.sh` commands it shows in
+   `~/actions-runner`. When `config.sh` asks for labels, enter `bravery`.
+2. Install it as a service so it starts at boot:
+   `cd ~/actions-runner && sudo ./svc.sh install "$USER" && sudo ./svc.sh start`.
+3. Start the first build from **Actions → Watch for Brave releases → Run workflow**.
+   It queues **Build Bravery** on your machine.
 
-`auto-update.sh` does nothing when the latest Brave release is already
-published, so it's safe to run often.
+After that, everything is automatic. If the machine is off when a build is
+queued, the job waits up to 24 hours and starts as soon as the runner comes
+online. If it waits longer, the watcher queues it again on its next run. For a
+VM that boots on a schedule, set `BRAVERY_SHUTDOWN_WHEN_DONE=1` so it powers off
+after a build. That needs passwordless `sudo shutdown`. The GitHub token the job
+uses covers releases and issues, so `gh auth login` is only needed on the
+machine if you run the scripts by hand.
+
+Prefer no runner? `scripts/auto-update.sh` does the same check, build and
+publish by itself, from cron or the systemd units in `config/systemd/`. In that
+setup the machine polls instead of GitHub, and it needs `gh auth login`.
 
 ## Installing on your phone
 
@@ -163,7 +172,9 @@ version that's already published, for example after a patch fix, bump
 | --- | --- |
 | `patches/` | Bravery's changes to brave-core, as a `git format-patch` series |
 | `BRAVERY_REVISION` | Patch revision, part of each release tag (`v1.98.61-bravery1`) |
-| `scripts/auto-update.sh` | Scheduled entry point: detect, build, publish, report |
+| `.github/workflows/watch-brave.yml` | Free-runner watcher: detect release, check patches, queue build |
+| `.github/workflows/build.yml` | Build job for your machine (self-hosted runner) |
+| `scripts/auto-update.sh` | Build entry point: build if unpublished, publish, report failures |
 | `scripts/build.sh` | Sync, patch, compile, sign one Brave release |
 | `scripts/publish.sh` | Create the GitHub release Obtainium installs from |
 | `scripts/check-patches.sh` | Apply-only check against any Brave tag (no build) |
@@ -171,7 +182,7 @@ version that's already published, for example after a patch fix, bump
 | `scripts/setup-build-machine.sh` | One-time machine setup |
 | `scripts/make-keystore.sh` | One-time signing key |
 | `scripts/export-patches.sh` | Write patches back after editing them in brave-core |
-| `config/` | Config template and systemd units |
+| `config/` | Config template; systemd units for the no-runner setup |
 
 ## Where the code lives (inside the patches)
 

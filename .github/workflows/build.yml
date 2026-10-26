@@ -1,12 +1,12 @@
-# Optional: run the automatic build from GitHub Actions on your own build
-# machine, registered as a self-hosted runner with the label "bravery".
-# (The simpler alternative is a cron job or systemd timer on the machine; see
-# README.) Either way the machine needs ~/.bravery/bravery.conf and the keystore.
+# Builds and publishes Bravery on your build machine, registered as a
+# self-hosted runner with the label "bravery". Queued by "Watch for Brave
+# releases" (which runs on GitHub's free runners), or by hand from the Actions
+# tab. If the machine is off, the job waits in the queue for up to 24 hours;
+# the watcher queues it again after that. The machine needs
+# ~/.bravery/bravery.conf and the signing key.
 name: Build Bravery
 
 on:
-  schedule:
-    - cron: '41 3 * * *'
   workflow_dispatch:
     inputs:
       brave_tag:
