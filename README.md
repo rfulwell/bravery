@@ -173,6 +173,9 @@ lighter. Still, for the first build set `BRAVERY_OFFICIAL_BUILD=0` and
 `BRAVERY_OFFICIAL_BUILD=1`. It's a little faster on the phone, but compiles
 noticeably slower and needs the most memory when linking.
 
+Using Claude Code on the Mac? Paste [docs/mac-mini-setup-prompt.md](docs/mac-mini-setup-prompt.md)
+into a session there and it will walk through all of this with you.
+
 **Setup**, in Terminal on the Mac:
 
 ```bash
