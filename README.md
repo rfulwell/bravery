@@ -94,16 +94,19 @@ Obtainium on your phone installs the update
   warning before a stable release would need a patch fix.
 - If the build itself fails, `auto-update.sh` opens an issue with the end of the log.
 - **Startup check (experimental, off by default):** `smoke-test.yml` installs an
-  APK on an Android emulator on GitHub's free runners, taps through the welcome
-  screens, opens a page, and watches for crashes. On the usual x86_64 emulator,
-  Chromium crashes under ARM translation, and official Brave crashes the same
-  way, so that setup can't judge Bravery. The `arm64` option uses GitHub's ARM
-  runners for a native ARM emulator. Once that's proven, setting the repository
-  variable `BRAVERY_STARTUP_CHECK=gate` makes every build publish as a
-  pre-release, which Obtainium ignores by default. The release is then promoted
-  only if the check passes. Run it by hand from **Actions → Startup check →
-  Run workflow**. Its `apk_url` field tests any APK, such as official Brave, as
-  a control.
+  APK on an Android emulator, taps through the welcome screens, opens a page,
+  and watches for crashes. It isn't usable on GitHub's free runners yet:
+  - On the x86_64 emulator, Chromium crashes under ARM translation, and
+    official Brave crashes the same way.
+  - The ARM runners (`arm64` option) have no KVM, so they can't run an
+    accelerated emulator.
+
+  It needs a runner that can run a native ARM64 emulator, such as a
+  self-hosted runner on an Apple Silicon Mac outside Docker. With one, setting
+  the repository variable `BRAVERY_STARTUP_CHECK=gate` makes every build
+  publish as a pre-release, which Obtainium ignores by default, and promotes it
+  only if the check passes. The `apk_url` field on **Actions → Startup check →
+  Run workflow** tests any APK, such as official Brave, as a control.
 
 ## Setting up the build machine
 
