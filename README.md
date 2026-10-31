@@ -68,7 +68,13 @@ Your machine, as a self-hosted runner (build.yml → auto-update.sh)
     4. pnpm run build Release (android, arm64, apk,
        package com.brave.browser_bravery)
     5. apksigner with your key
-  publish.sh → GitHub release v1.98.61-bravery1 (+ APK)
+  publish.sh → GitHub pre-release v1.98.61-bravery1 (+ APK)
+        ▼
+GitHub's free runners: startup check (smoke-test.yml)
+  installs the APK on an Android emulator, taps through the welcome
+  screens, opens a page, taps/scrolls/long-presses, watches for crashes
+  passed → promoted to the latest release
+  failed → stays a pre-release, issue opened with the crash + screenshots
         ▼
 Obtainium on your phone installs the update
 ```
@@ -93,6 +99,13 @@ Obtainium on your phone installs the update
   against Brave's latest **beta** as well as stable. Beta gives you weeks of
   warning before a stable release would need a patch fix.
 - If the build itself fails, `auto-update.sh` opens an issue with the end of the log.
+- **Startup check:** a build that crashes on startup never reaches your phone.
+  Obtainium ignores pre-releases by default, and a release is only promoted
+  after it survives the emulator check. The emulator runs Bravery's arm64 APK
+  through Android's ARM translation, so it can't catch everything a real Pixel
+  would. If the check itself misfires, promote a release by hand with
+  `gh release edit <tag> --prerelease=false --latest`. To check an existing
+  release, use **Actions → Startup check → Run workflow**.
 
 ## Setting up the build machine
 
@@ -215,9 +228,11 @@ the build environment.
    If the repo is private, add a GitHub token in Obtainium's settings.
 3. Install Bravery. It appears as **Bravery** (package `com.brave.browser_bravery`)
    next to Brave, with its own profile.
-4. In Obtainium, enable background updates. On Android 12+ updates then install
+4. Leave Obtainium's "Include prereleases" off for Bravery. Releases that
+   haven't passed the startup check yet are pre-releases.
+5. In Obtainium, enable background updates. On Android 12+ updates then install
    without prompts.
-5. **Settings → Sync** in Bravery: join the same sync chain as Brave (see the risk
+6. **Settings → Sync** in Bravery: join the same sync chain as Brave (see the risk
    note above).
 
 If you used Tap2Scroll, disable its accessibility service. Bravery's built-in

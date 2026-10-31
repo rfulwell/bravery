@@ -1,0 +1,93 @@
+# Startup check on GitHub's free runners. New releases are published as
+# pre-releases, which Obtainium ignores by default. This installs the APK on an
+# Android emulator with ARM translation, runs scripts/smoke-test.sh, and only
+# then marks the release as a normal (latest) release, so a build that crashes
+# on startup never reaches the phone. On failure it opens an issue with the
+# crash and attaches screenshots and logs to the run.
+name: Startup check
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release tag to check, e.g. v1.98.60-bravery2'
+        required: true
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE: ${{ inputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download ${{ inputs.release }}
+        run: |
+          mkdir -p apk
+          gh release download "$RELEASE" --pattern '*.apk' --dir apk
+          ls -l apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run on an emulator
+        id: emulator
+        uses: reactivecircus/android-emulator-runner@v2.33.0
+        with:
+          # x86_64 Google APIs images from Android 11 on translate arm64 apps,
+          # which is how this runs Bravery's arm64-only APK.
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          disk-size: 8G
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: scripts/smoke-test.sh apk/*.apk smoke-out
+
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: startup-check-${{ inputs.release }}
+          path: smoke-out/
+          retention-days: 30
+
+      - name: Promote the release
+        if: success()
+        run: gh release edit "$RELEASE" --prerelease=false --latest
+
+      - name: Open an issue
+        if: failure()
+        run: |
+          result="$(cat smoke-out/result.txt 2>/dev/null || echo 'The startup check failed before it could run; see the workflow log.')"
+          title="Startup check failed for $RELEASE"
+          {
+            echo "$result"
+            echo
+            echo "The release stays a pre-release, so Obtainium won't install it. Screenshots, UI dumps and the full log are attached to ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}."
+            echo
+            echo "If the check itself is wrong, promote the release by hand: \`gh release edit $RELEASE --prerelease=false --latest\`."
+            echo
+            echo '```'
+            head -c 50000 smoke-out/crash-excerpt.txt 2>/dev/null
+            echo '```'
+          } > issue.md
+          if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')" ]; then
+            gh issue create --title "$title" --body-file issue.md
+          fi

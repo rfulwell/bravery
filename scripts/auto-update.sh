@@ -65,4 +65,6 @@ fi
 APK="$(tail -n 1 "$LOG")"
 [[ -f "$APK" ]] || die "build reported success but $APK is missing"
 "$BRAVERY_ROOT/scripts/publish.sh" "$TAG" "$APK"
+# Lets build.yml hand the new release to the startup check.
+[[ -n "${GITHUB_OUTPUT:-}" ]] && echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
 log "Done: $RELEASE"

@@ -29,6 +29,16 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       BRAVERY_UPDATED: '1'
       BRAVERY_BRAVE_TAG: ${{ inputs.brave_tag }}
+    outputs:
+      release: ${{ steps.build.outputs.release }}
     steps:
       - uses: actions/checkout@v4
-      - run: scripts/auto-update.sh
+      - id: build
+        run: scripts/auto-update.sh
+
+  startup-check:
+    needs: build
+    if: needs.build.outputs.release != ''
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      release: ${{ needs.build.outputs.release }}
