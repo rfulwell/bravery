@@ -15,15 +15,14 @@ NOTES="Bravery built from Brave ${TAG} with Bravery patch revision ${BRAVERY_REV
 
 - Brave release notes: https://github.com/brave/brave-browser/releases/tag/${TAG}
 - Bravery patches: https://github.com/${BRAVERY_REPO}/tree/$(git -C "$BRAVERY_ROOT" rev-parse HEAD)/patches
-- SHA-256: $(sha256sum "$APK" | cut -d' ' -f1)
-
-Published as a pre-release until the startup check passes on an emulator."
+- SHA-256: $(sha256sum "$APK" | cut -d' ' -f1)"
 
 log "Publishing $RELEASE to $BRAVERY_REPO"
-# Published as a pre-release, which Obtainium ignores by default; the startup
-# check (smoke-test.yml) promotes it once it has run on an emulator.
-PRERELEASE=(--prerelease)
-[[ "${BRAVERY_SKIP_STARTUP_CHECK:-0}" == 1 ]] && PRERELEASE=()
+# With the startup check gating releases (repository variable
+# BRAVERY_STARTUP_CHECK=gate), publish as a pre-release, which Obtainium
+# ignores by default; smoke-test.yml promotes it once it passes.
+PRERELEASE=()
+[[ "${BRAVERY_STARTUP_CHECK:-}" == gate ]] && PRERELEASE=(--prerelease)
 gh release create "$RELEASE" "$APK" "${PRERELEASE[@]}" \
   --repo "$BRAVERY_REPO" \
   --title "Bravery $VERSION (r$BRAVERY_REVISION)" \

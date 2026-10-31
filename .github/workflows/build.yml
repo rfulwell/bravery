@@ -29,6 +29,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       BRAVERY_UPDATED: '1'
       BRAVERY_BRAVE_TAG: ${{ inputs.brave_tag }}
+      BRAVERY_STARTUP_CHECK: ${{ vars.BRAVERY_STARTUP_CHECK }}
     outputs:
       release: ${{ steps.build.outputs.release }}
     steps:
@@ -38,7 +39,9 @@ jobs:
 
   startup-check:
     needs: build
-    if: needs.build.outputs.release != ''
+    # Off until an emulator that can run Chromium is proven; see smoke-test.yml.
+    if: needs.build.outputs.release != '' && vars.BRAVERY_STARTUP_CHECK == 'gate'
     uses: ./.github/workflows/smoke-test.yml
     with:
       release: ${{ needs.build.outputs.release }}
+      arch: ${{ vars.BRAVERY_STARTUP_CHECK_ARCH || 'arm64' }}

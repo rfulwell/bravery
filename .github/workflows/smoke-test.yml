@@ -12,6 +12,9 @@ on:
       release:
         type: string
         required: true
+      arch:
+        type: string
+        default: x86_64
   workflow_dispatch:
     inputs:
       release:
@@ -24,6 +27,11 @@ on:
         description: 'Control run: package name of that APK'
         required: false
         default: com.brave.browser
+      arch:
+        description: 'x86_64 (translates arm64 apps) or arm64 (native, ARM runner)'
+        type: choice
+        options: [x86_64, arm64]
+        default: x86_64
 
 permissions:
   contents: write
@@ -31,7 +39,7 @@ permissions:
 
 jobs:
   smoke-test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
@@ -53,6 +61,7 @@ jobs:
 
       - name: Enable KVM
         run: |
+          ls -l /dev/kvm || echo "::warning::No /dev/kvm on this runner; the emulator will be very slow"
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -62,11 +71,11 @@ jobs:
         id: emulator
         uses: reactivecircus/android-emulator-runner@v2.33.0
         with:
-          # x86_64 Google APIs images from Android 11 on translate arm64 apps,
-          # which is how this runs Bravery's arm64-only APK.
+          # x86_64 images translate arm64 apps, but Chromium crashes under that
+          # translation (official Brave too), so only arm64 gives a real result.
           api-level: 34
           target: google_apis
-          arch: x86_64
+          arch: ${{ inputs.arch == 'arm64' && 'arm64-v8a' || 'x86_64' }}
           ram-size: 4096M
           disk-size: 8G
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
