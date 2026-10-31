@@ -3,6 +3,12 @@
 #
 #   scripts/build.sh v1.98.61
 #
+# Development mode rebuilds the current brave-core checkout as it is, keeping
+# your edits there: no checkout, sync or patching (plaster rules you changed
+# are re-applied). Much faster for a debug/fix loop:
+#
+#   scripts/build.sh --dev
+#
 # Prints the path of the signed APK as the last line of stdout. Exit codes:
 #   1  general failure (sync, compile, signing)
 #   3  the Bravery patches no longer apply to this Brave release
@@ -10,7 +16,13 @@ set -euo pipefail
 source "$(dirname "$0")/common.sh"
 load_config
 
-TAG="${1:?usage: build.sh <brave tag, e.g. v1.98.61>}"
+DEV=
+if [[ "${1:-}" == --dev ]]; then
+  DEV=1
+  TAG="v$(node -p "require('$BRAVERY_BRAVE_CORE/package.json').version")"
+else
+  TAG="${1:?usage: build.sh <brave tag, e.g. v1.98.61> | --dev}"
+fi
 [[ "$TAG" == v* ]] || TAG="v$TAG"
 VERSION="${TAG#v}"
 ARCH="$BRAVERY_TARGET_ARCH"
@@ -22,6 +34,7 @@ command -v pnpm >/dev/null || die "pnpm not found (run scripts/setup-build-machi
 
 mkdir -p "$BRAVERY_SRC"
 
+if [[ -z "$DEV" ]]; then
 # --- 1. brave-core at the release tag ---------------------------------------
 if [[ ! -d "$BRAVERY_BRAVE_CORE/.git" ]]; then
   log "Cloning brave-core"
@@ -97,6 +110,20 @@ if (( ${#PLASTERS[@]} )); then
   pnpm run apply_patches Release
 fi
 
+else
+  [[ -d "$BRAVERY_BRAVE_CORE/vendor/depot_tools" ]] || die "--dev needs a previous full build"
+  cd "$BRAVERY_BRAVE_CORE"
+  export PATH="$BRAVERY_BRAVE_CORE/vendor/depot_tools:$PATH"
+  # Re-apply plaster rules that differ from the release, including uncommitted
+  # edits; plaster skips the ones that are already up to date.
+  mapfile -t PLASTERS < <(git diff --name-only "$TAG" -- rewrite/)
+  if (( ${#PLASTERS[@]} )); then
+    log "Applying plaster rules: ${PLASTERS[*]}"
+    vpython3 tools/cr/plaster.py apply "${PLASTERS[@]}"
+    pnpm run apply_patches Release
+  fi
+fi
+
 # --- 5. Compile -------------------------------------------------------------------
 BUILD_ARGS=(
   Release
@@ -131,7 +158,7 @@ APKSIGNER="$(ls -d "$BRAVERY_SRC"/third_party/android_sdk/public/build-tools/*/a
 [[ -x "$APKSIGNER" ]] || die "apksigner not found in the Android SDK checkout"
 DIST="$BRAVERY_WORKDIR/dist"
 mkdir -p "$DIST"
-SIGNED="$DIST/Bravery-$VERSION-bravery$BRAVERY_REVISION-$ARCH.apk"
+SIGNED="$DIST/Bravery-$VERSION-bravery$BRAVERY_REVISION${DEV:+-dev}-$ARCH.apk"
 log "Signing $SIGNED"
 export BRAVERY_KEYSTORE_PASSWORD
 export BRAVERY_KEY_PASSWORD="${BRAVERY_KEY_PASSWORD:-$BRAVERY_KEYSTORE_PASSWORD}"
