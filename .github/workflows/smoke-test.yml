@@ -17,6 +17,13 @@ on:
       release:
         description: 'Release tag to check, e.g. v1.98.60-bravery2'
         required: true
+      apk_url:
+        description: 'Control run: test this APK URL instead (no promotion, no issue)'
+        required: false
+      package:
+        description: 'Control run: package name of that APK'
+        required: false
+        default: com.brave.browser
 
 permissions:
   contents: write
@@ -29,13 +36,19 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE: ${{ inputs.release }}
+      APK_URL: ${{ inputs.apk_url }}
+      SMOKE_PACKAGE: ${{ inputs.apk_url && inputs.package || 'com.brave.browser_bravery' }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Download ${{ inputs.release }}
         run: |
           mkdir -p apk
-          gh release download "$RELEASE" --pattern '*.apk' --dir apk
+          if [ -n "$APK_URL" ]; then
+            curl -fsSL -o apk/control.apk "$APK_URL"
+          else
+            gh release download "$RELEASE" --pattern '*.apk' --dir apk
+          fi
           ls -l apk
 
       - name: Enable KVM
@@ -69,11 +82,11 @@ jobs:
           retention-days: 30
 
       - name: Promote the release
-        if: success()
+        if: success() && inputs.apk_url == ''
         run: gh release edit "$RELEASE" --prerelease=false --latest
 
       - name: Open an issue
-        if: failure()
+        if: failure() && inputs.apk_url == ''
         run: |
           result="$(cat smoke-out/result.txt 2>/dev/null || echo 'The startup check failed before it could run; see the workflow log.')"
           title="Startup check failed for $RELEASE"

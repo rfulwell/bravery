@@ -14,7 +14,7 @@ set -uo pipefail
 
 APK="${1:?usage: smoke-test.sh <apk> <output dir>}"
 OUT="${2:?usage: smoke-test.sh <apk> <output dir>}"
-PKG=com.brave.browser_bravery
+PKG="${SMOKE_PACKAGE:-com.brave.browser_bravery}"
 URL=https://example.com/
 # Matches Bravery's main process in Java ("Process: <pkg>, PID") and native
 # (">>> <pkg> <<<") crash reports, but not its renderer/GPU processes.
@@ -76,7 +76,7 @@ try:
 except ET.ParseError:
     sys.exit(1)
 for n in root.iter("node"):
-    if (n.get("resource-id") or "").endswith(":id/url_bar") and "example.com" in (n.get("text") or ""):
+    if (n.get("resource-id") or "").endswith("id/url_bar") and "example.com" in (n.get("text") or ""):
         sys.exit(0)
 sys.exit(1)
 '
