@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 1 Nov 2026 19:35:49 +0000
+Subject: [PATCH 5/6] Bravery: apply ad-block lists without Brave's components
+
+Brave's component updater needs a private services key, so the filter list
+catalog never loads.
+- Disable the adblock DAT cache on Android. Its gates wait for the catalog,
+  so no engine (not even custom filters) was ever built.
+- Subscribe to EasyList once by default.
+---
+ .../content/browser/ad_block_service.cc       |  2 ++
+ .../ad_block_subscription_service_manager.cc  | 19 +++++++++++++++++++
+ .../ad_block_subscription_service_manager.h   |  5 +++++
+ .../brave_shields/core/common/features.cc     |  5 ++++-
+ 4 files changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/components/brave_shields/content/browser/ad_block_service.cc b/components/brave_shields/content/browser/ad_block_service.cc
+index 903ee8f36d4..89f9f087b55 100644
+--- a/components/brave_shields/content/browser/ad_block_service.cc
++++ b/components/brave_shields/content/browser/ad_block_service.cc
+@@ -456,6 +456,8 @@ void RegisterPrefsForAdBlockService(PrefRegistrySimple* registry) {
+   registry->RegisterStringPref(prefs::kAdBlockCustomFilters, std::string());
+   registry->RegisterDictionaryPref(prefs::kAdBlockRegionalFilters);
+   registry->RegisterDictionaryPref(prefs::kAdBlockListSubscriptions);
++  registry->RegisterBooleanPref(kBraveryDefaultSubscriptionsAdded,
++                                false);
+   registry->RegisterBooleanPref(prefs::kAdBlockCheckedDefaultRegion, false);
+   registry->RegisterBooleanPref(prefs::kAdBlockCheckedAllDefaultRegions, false);
+   registry->RegisterBooleanPref(prefs::kAdBlockOnlyModeEnabled, false);
+diff --git a/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc b/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
+index 9066812ccd1..dfc49c570ba 100644
+--- a/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
++++ b/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
+@@ -43,6 +43,10 @@ namespace {
+ constexpr uint16_t kSubscriptionMaxExpiresHours = 14 * 24;
+ constexpr base::TimeDelta kListRetryInterval = base::Hours(1);
+ constexpr base::TimeDelta kListCheckInitialDelay = base::Minutes(1);
++// Bravery: Brave's own lists come from its component updater, which needs a
++// private services key, so subscribe to EasyList directly instead.
++constexpr char kBraveryEasyListUrl[] =
++    "https://easylist.to/easylist/easylist.txt";
+ 
+ bool SkipGURLField(std::string_view value, GURL* field) {
+   return true;
+@@ -345,6 +349,7 @@ void AdBlockSubscriptionServiceManager::OnGetDownloadManager(
+ 
+   download_manager_->CancelAllPendingDownloads();
+   LoadSubscriptionServices();
++  AddBraveryDefaultSubscriptions();
+ 
+   subscription_update_timer_->Schedule(
+       kListCheckInitialDelay, kListRetryInterval,
+@@ -451,6 +456,20 @@ void AdBlockSubscriptionServiceManager::LoadSubscriptionServices() {
+   }
+ }
+ 
++// Bravery: adds the default lists once, so a list the user removes stays
++// removed.
++void AdBlockSubscriptionServiceManager::AddBraveryDefaultSubscriptions() {
++  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
++
++  if (!local_state_ ||
++      local_state_->GetBoolean(kBraveryDefaultSubscriptionsAdded)) {
++    return;
++  }
++
++  CreateSubscription(GURL(kBraveryEasyListUrl));
++  local_state_->SetBoolean(kBraveryDefaultSubscriptionsAdded, true);
++}
++
+ // Updates preferences to reflect a new state for the specified filter list
+ // subscription. Creates the entry if it does not yet exist.
+ void AdBlockSubscriptionServiceManager::UpdateSubscriptionPrefs(
+diff --git a/components/brave_shields/content/browser/ad_block_subscription_service_manager.h b/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
+index fe8e59ce6c2..871959cbb22 100644
+--- a/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
++++ b/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
+@@ -45,6 +45,10 @@ namespace brave_shields {
+ 
+ inline constexpr uint16_t kSubscriptionDefaultExpiresHours = 7 * 24;
+ 
++// Bravery: local state pref, set once the default subscriptions are added.
++inline constexpr char kBraveryDefaultSubscriptionsAdded[] =
++    "bravery.ad_block.default_subscriptions_added";
++
+ struct SubscriptionInfo {
+   SubscriptionInfo();
+   ~SubscriptionInfo();
+@@ -125,6 +129,7 @@ class AdBlockSubscriptionServiceManager {
+ 
+   bool initialized_;
+   void LoadSubscriptionServices();
++  void AddBraveryDefaultSubscriptions();
+   void UpdateSubscriptionPrefs(const GURL& sub_url,
+                                const SubscriptionInfo& info);
+   void ClearSubscriptionPrefs(const GURL& sub_url);
+diff --git a/components/brave_shields/core/common/features.cc b/components/brave_shields/core/common/features.cc
+index 471d1bc22aa..707a0ae46a1 100644
+--- a/components/brave_shields/core/common/features.cc
++++ b/components/brave_shields/core/common/features.cc
+@@ -162,8 +162,11 @@ BASE_FEATURE(kShowUpdatedShieldsPanel, base::FEATURE_ENABLED_BY_DEFAULT);
+ // When enabled, adblock engines are serialized to DAT files on disk after
+ // filter set loading. On subsequent startups, the cached DAT is loaded
+ // instead of reprocessing filter lists, improving startup time.
++// Bravery: disabled on Android too. With it enabled, engine builds wait for the
++// filter list catalog component, which needs a Brave services key to download,
++// so no list (not even EasyList or custom filters) would ever be applied.
+ BASE_FEATURE(kAdblockDATCache,
+-#if BUILDFLAG(IS_IOS)
++#if BUILDFLAG(IS_IOS) || BUILDFLAG(IS_ANDROID)
+              base::FEATURE_DISABLED_BY_DEFAULT);
+ #else
+              base::FEATURE_ENABLED_BY_DEFAULT);

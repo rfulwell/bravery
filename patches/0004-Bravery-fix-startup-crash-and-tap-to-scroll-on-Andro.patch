@@ -1,0 +1,260 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 1 Nov 2026 19:35:49 +0000
+Subject: [PATCH 4/6] Bravery: fix startup crash and tap to scroll on Android
+ 15+
+
+- Attach per-tab helpers once the WebContents is initialized. The view is
+  created first, and SelectionPopupController.fromWebContents asserted there.
+- Record taps on ACTION_DOWN. Content transfers the rest of the gesture to
+  viz on Android 15+, so the view only sees ACTION_CANCEL.
+- Scroll on taps a page cancels (e.g. preventDefault on mouseup) unless they
+  land on something interactive, checked in the isolated world.
+- Use the top and bottom halves as scroll zones.
+---
+ .../browser/bravery/BraveryBannerHider.java   | 16 +++++
+ .../browser/bravery/BraveryController.java    | 20 +++++-
+ .../browser/bravery/BraveryTapToScroll.java   | 63 ++++++++++---------
+ .../android/bravery/bravery_banner_hider.js   | 33 ++++++++++
+ 4 files changed, 100 insertions(+), 32 deletions(-)
+
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
+index cde231a4382..c913565fb8f 100644
+--- a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
+@@ -51,6 +51,22 @@ public final class BraveryBannerHider {
+                 result -> onHideResult(webContents, result));
+     }
+ 
++    /**
++     * Reports whether the element under a point, in physical pixels relative to the page view, is
++     * interactive. Reports true when that can't be determined.
++     */
++    public static void isInteractiveAt(
++            WebContents webContents, float x, float y, Callback<Boolean> callback) {
++        if (webContents == null || webContents.isDestroyed()) {
++            callback.onResult(true);
++            return;
++        }
++        run(
++                webContents,
++                "tapTarget(" + x + "," + y + ")",
++                result -> callback.onResult(!"plain".equals(result)));
++    }
++
+     /** Hides the banner containing the current text selection. */
+     public static void hideSelection(WebContents webContents, String mode) {
+         run(
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryController.java b/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
+index ad2edb98c07..7518020c2af 100644
+--- a/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
+@@ -40,7 +40,7 @@ public final class BraveryController implements BraveContentView.BraveryHook {
+         WebContents webContents = view.getWebContents();
+         if (webContents == null || webContents.isDestroyed()) return;
+         TabState state = getOrCreateState(webContents);
+-        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
++        if (event.getActionMasked() == MotionEvent.ACTION_DOWN && state.attachIfReady()) {
+             // Chrome may install its own selection menu delegate after the view is created.
+             BraverySelectionMenuDelegate.ensureInstalled(webContents);
+         }
+@@ -58,17 +58,33 @@ public final class BraveryController implements BraveContentView.BraveryHook {
+ 
+     private final class TabState extends WebContentsObserver {
+         final BraveryTapToScroll tapToScroll;
++        private boolean mAttached;
+ 
+         TabState(WebContents webContents) {
+             super(webContents);
+             tapToScroll = new BraveryTapToScroll(webContents);
++            attachIfReady();
++        }
++
++        /**
++         * The view is created before its WebContents is initialized, and until then content's
++         * per-WebContents helpers are unavailable. Returns whether the helpers are attached.
++         */
++        boolean attachIfReady() {
++            if (mAttached) return true;
++            WebContents webContents = getWebContents();
++            if (webContents == null || webContents.isDestroyed()) return false;
+             GestureListenerManager gestures = GestureListenerManager.fromWebContents(webContents);
+-            if (gestures != null) gestures.addListener(tapToScroll);
++            if (gestures == null) return false;
++            gestures.addListener(tapToScroll);
+             BraverySelectionMenuDelegate.ensureInstalled(webContents);
++            mAttached = true;
++            return true;
+         }
+ 
+         @Override
+         public void primaryMainDocumentElementAvailable() {
++            attachIfReady();
+             applyBannerRules();
+         }
+ 
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
+index a8717295eb4..6d770b9d32e 100644
+--- a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
+@@ -30,7 +30,7 @@ final class BraveryTapToScroll extends GestureStateListener {
+     private static final long MAX_TAP_ACK_DELAY_MS = 1500;
+     private static final long RELEASE_HOLD_MS = 80;
+ 
+-    private static final float EDGE_ZONE = 0.15f;
++    private static final float EDGE_ZONE = 0.5f;
+     private static final float SIDE_ZONE = 0.20f;
+     private static final float CORNER_ZONE_WIDTH = 0.30f;
+     private static final float CORNER_ZONE_HEIGHT = 0.15f;
+@@ -39,14 +39,11 @@ final class BraveryTapToScroll extends GestureStateListener {
+     private WeakReference<BraveContentView> mView = new WeakReference<>(null);
+ 
+     private int mTouchSlop = -1;
+-    private boolean mTapCandidate;
+-    private float mDownX;
+-    private float mDownY;
+-    private long mDownTime;
+ 
+     private float mTapX;
+     private float mTapY;
+     private long mTapTime = -1;
++    private int mTapSequence;
+ 
+     private boolean mInjecting;
+     private ScrollAnimation mAnimation;
+@@ -65,37 +62,25 @@ final class BraveryTapToScroll extends GestureStateListener {
+     void onTouchEvent(BraveContentView view, MotionEvent event) {
+         if (mInjecting) return;
+         setView(view);
++        // Only the down is reliable: on Android 15+ content may transfer the rest of the gesture
++        // to viz, and this view then gets ACTION_CANCEL. Whether it was a tap is decided by the
++        // renderer, which reports it through onSingleTap.
+         switch (event.getActionMasked()) {
+             case MotionEvent.ACTION_DOWN:
+                 // A real finger always wins over a scroll we are still animating.
+                 cancelAnimation();
+-                mTapCandidate =
+-                        event.getPointerCount() == 1
+-                                && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER;
+-                mDownX = event.getX();
+-                mDownY = event.getY();
+-                mDownTime = event.getEventTime();
+-                break;
+-            case MotionEvent.ACTION_POINTER_DOWN:
+-            case MotionEvent.ACTION_CANCEL:
+-                mTapCandidate = false;
+-                break;
+-            case MotionEvent.ACTION_MOVE:
+-                if (mTapCandidate
+-                        && Math.hypot(event.getX() - mDownX, event.getY() - mDownY)
+-                                > getTouchSlop(view)) {
+-                    mTapCandidate = false;
+-                }
+-                break;
+-            case MotionEvent.ACTION_UP:
+-                if (mTapCandidate
+-                        && event.getEventTime() - mDownTime
+-                                < ViewConfiguration.getLongPressTimeout()) {
++                mTapSequence++;
++                if (event.getPointerCount() == 1
++                        && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER) {
+                     mTapX = event.getX();
+                     mTapY = event.getY();
+                     mTapTime = SystemClock.uptimeMillis();
++                } else {
++                    mTapTime = -1;
+                 }
+-                mTapCandidate = false;
++                break;
++            case MotionEvent.ACTION_POINTER_DOWN:
++                mTapTime = -1;
+                 break;
+             default:
+                 break;
+@@ -106,7 +91,7 @@ final class BraveryTapToScroll extends GestureStateListener {
+     public void onSingleTap(boolean consumed) {
+         long tapTime = mTapTime;
+         mTapTime = -1;
+-        if (consumed || tapTime < 0) return;
++        if (tapTime < 0) return;
+         if (SystemClock.uptimeMillis() - tapTime > MAX_TAP_ACK_DELAY_MS) return;
+         if (!BraveryPrefs.isTapScrollEnabled()) return;
+ 
+@@ -127,7 +112,25 @@ final class BraveryTapToScroll extends GestureStateListener {
+                         view.getHeight());
+         if (direction == 0) return;
+         if (BraveryPrefs.isTapScrollInverted()) direction = -direction;
+-        startScroll(view, direction, mTapX, mTapY);
++        float tapX = mTapX;
++        float tapY = mTapY;
++        if (!consumed) {
++            startScroll(view, direction, tapX, tapY);
++            return;
++        }
++
++        // Some pages cancel every tap (e.g. preventDefault on the emulated mouseup), so a consumed
++        // tap still scrolls unless it landed on something interactive.
++        int sequence = mTapSequence;
++        int scrollDirection = direction;
++        BraveryBannerHider.isInteractiveAt(
++                webContents,
++                tapX,
++                tapY,
++                isInteractive -> {
++                    if (isInteractive || sequence != mTapSequence || mView.get() != view) return;
++                    startScroll(view, scrollDirection, tapX, tapY);
++                });
+     }
+ 
+     @Override
+diff --git a/browser/android/bravery/bravery_banner_hider.js b/browser/android/bravery/bravery_banner_hider.js
+index e7f31db77ca..66a5ecba2e8 100644
+--- a/browser/android/bravery/bravery_banner_hider.js
++++ b/browser/android/bravery/bravery_banner_hider.js
+@@ -67,6 +67,26 @@ html[${HIDDEN_ATTR}] [${ATTR}="autohide"][${EDGE_ATTR}="bottom"] {
+     return banner
+   }
+ 
++  // Listeners added by page scripts aren't visible from this world, so a
++  // pointer cursor stands in for "has a click handler".
++  const INTERACTIVE_SELECTOR = [
++    'a[href]', 'button', 'input', 'select', 'textarea', 'label', 'summary',
++    'iframe', 'video[controls]', 'audio[controls]',
++    '[contenteditable]:not([contenteditable="false"])', '[onclick]',
++    '[tabindex]:not([tabindex="-1"])', '[role="button"]', '[role="link"]',
++    '[role="checkbox"]', '[role="radio"]', '[role="switch"]', '[role="tab"]',
++    '[role="menuitem"]', '[role="option"]', '[role="slider"]',
++    '[role="textbox"]',
++  ].join(',')
++
++  function isInteractive(el) {
++    if (!el) {
++      return true
++    }
++    return Boolean(el.closest(INTERACTIVE_SELECTOR))
++      || getComputedStyle(el).cursor === 'pointer'
++  }
++
+   function bannerAtPoint(x, y) {
+     for (const el of document.elementsFromPoint(x, y)) {
+       const banner = bannerFor(el)
+@@ -257,6 +277,19 @@ html[${HIDDEN_ATTR}] [${ATTR}="autohide"][${EDGE_ATTR}="bottom"] {
+       return hide(bannerAtPoint(cssX, cssY), mode)
+     },
+ 
++    // `x` and `y` are physical pixels relative to the page view.
++    tapTarget(x, y) {
++      const viewport = window.visualViewport
++      const scale = viewport ? viewport.scale : 1
++      const cssX = x / window.devicePixelRatio / scale
++        + (viewport ? viewport.offsetLeft : 0)
++      const cssY = y / window.devicePixelRatio / scale
++        + (viewport ? viewport.offsetTop : 0)
++      return isInteractive(document.elementFromPoint(cssX, cssY))
++        ? 'interactive'
++        : 'plain'
++    },
++
+     hideSelection(mode) {
+       const selection = window.getSelection()
+       if (!selection || selection.rangeCount === 0) {

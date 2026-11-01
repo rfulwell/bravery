@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 26 Oct 2026 03:01:14 +0000
-Subject: [PATCH 3/3] Bravery: allow 64-bit-only stable builds
+Subject: [PATCH 3/6] Bravery: allow 64-bit-only stable builds
 
 Chromium's binary-size expectation checks reference the 32-bit and
 64/32-bit Trichrome and WebView variants, which only exist with
@@ -14,7 +14,7 @@ build (all a Pixel 7 or later can run) passes gn gen.
 
 diff --git a/rewrite/chrome/android/expectations/expectations.gni.yaml b/rewrite/chrome/android/expectations/expectations.gni.yaml
 new file mode 100644
-index 000000000..2edd5b07d
+index 00000000000..2edd5b07d86
 --- /dev/null
 +++ b/rewrite/chrome/android/expectations/expectations.gni.yaml
 @@ -0,0 +1,18 @@
