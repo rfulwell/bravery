@@ -1,0 +1,136 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 1 Nov 2026 20:43:34 +0000
+Subject: [PATCH 7/7] Bravery: check the page before every tap-to-scroll
+
+Focusing a field doesn't consume a tap, so tapping a search box in the top
+half scrolled up at the top of the page and triggered pull-to-refresh.
+Ask the page for every zone tap and scroll only when the tap missed
+interactive elements and there is room to scroll in that direction.
+---
+ .../browser/bravery/BraveryBannerHider.java   | 15 +++++----
+ .../browser/bravery/BraveryTapToScroll.java   | 16 ++++------
+ .../android/bravery/bravery_banner_hider.js   | 32 ++++++++++++++++---
+ 3 files changed, 42 insertions(+), 21 deletions(-)
+
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
+index c913565fb8f..5b6778adf4c 100644
+--- a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
+@@ -52,19 +52,20 @@ public final class BraveryBannerHider {
+     }
+ 
+     /**
+-     * Reports whether the element under a point, in physical pixels relative to the page view, is
+-     * interactive. Reports true when that can't be determined.
++     * Reports whether a tap at a point, in physical pixels relative to the page view, should
++     * scroll in `direction` (1 down, -1 up): it didn't hit anything interactive and there is room
++     * to scroll that way. Reports false when that can't be determined.
+      */
+-    public static void isInteractiveAt(
+-            WebContents webContents, float x, float y, Callback<Boolean> callback) {
++    public static void shouldScrollForTap(
++            WebContents webContents, float x, float y, int direction, Callback<Boolean> callback) {
+         if (webContents == null || webContents.isDestroyed()) {
+-            callback.onResult(true);
++            callback.onResult(false);
+             return;
+         }
+         run(
+                 webContents,
+-                "tapTarget(" + x + "," + y + ")",
+-                result -> callback.onResult(!"plain".equals(result)));
++                "tapTarget(" + x + "," + y + "," + direction + ")",
++                result -> callback.onResult("plain".equals(result)));
+     }
+ 
+     /** Hides the banner containing the current text selection. */
+diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
+index 6d770b9d32e..0a7bf0385f7 100644
+--- a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
++++ b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
+@@ -114,21 +114,19 @@ final class BraveryTapToScroll extends GestureStateListener {
+         if (BraveryPrefs.isTapScrollInverted()) direction = -direction;
+         float tapX = mTapX;
+         float tapY = mTapY;
+-        if (!consumed) {
+-            startScroll(view, direction, tapX, tapY);
+-            return;
+-        }
+ 
+-        // Some pages cancel every tap (e.g. preventDefault on the emulated mouseup), so a consumed
+-        // tap still scrolls unless it landed on something interactive.
++        // `consumed` alone can't decide: focusing a field doesn't consume a tap, and some pages
++        // cancel every tap (e.g. preventDefault on the emulated mouseup). Ask the page instead,
++        // which also avoids dragging past the end of the page into pull-to-refresh.
+         int sequence = mTapSequence;
+         int scrollDirection = direction;
+-        BraveryBannerHider.isInteractiveAt(
++        BraveryBannerHider.shouldScrollForTap(
+                 webContents,
+                 tapX,
+                 tapY,
+-                isInteractive -> {
+-                    if (isInteractive || sequence != mTapSequence || mView.get() != view) return;
++                scrollDirection,
++                shouldScroll -> {
++                    if (!shouldScroll || sequence != mTapSequence || mView.get() != view) return;
+                     startScroll(view, scrollDirection, tapX, tapY);
+                 });
+     }
+diff --git a/browser/android/bravery/bravery_banner_hider.js b/browser/android/bravery/bravery_banner_hider.js
+index 66a5ecba2e8..063cf6ab0f0 100644
+--- a/browser/android/bravery/bravery_banner_hider.js
++++ b/browser/android/bravery/bravery_banner_hider.js
+@@ -87,6 +87,25 @@ html[${HIDDEN_ATTR}] [${ATTR}="autohide"][${EDGE_ATTR}="bottom"] {
+       || getComputedStyle(el).cursor === 'pointer'
+   }
+ 
++  // Whether a drag would scroll something under `el` in `direction` (1 down,
++  // -1 up). Dragging past the top of the page triggers pull-to-refresh.
++  function canScroll(el, direction) {
++    for (let node = el; node && !isRoot(node); node = node.parentElement) {
++      const overflowY = getComputedStyle(node).overflowY
++      if ((overflowY === 'auto' || overflowY === 'scroll')
++        && node.scrollHeight > node.clientHeight + 1
++        && (direction > 0
++          ? node.scrollTop + node.clientHeight < node.scrollHeight - 1
++          : node.scrollTop > 0)) {
++        return true
++      }
++    }
++    const root = document.scrollingElement || document.documentElement
++    return direction > 0
++      ? window.scrollY + window.innerHeight < root.scrollHeight - 1
++      : window.scrollY > 0
++  }
++
+   function bannerAtPoint(x, y) {
+     for (const el of document.elementsFromPoint(x, y)) {
+       const banner = bannerFor(el)
+@@ -277,17 +296,20 @@ html[${HIDDEN_ATTR}] [${ATTR}="autohide"][${EDGE_ATTR}="bottom"] {
+       return hide(bannerAtPoint(cssX, cssY), mode)
+     },
+ 
+-    // `x` and `y` are physical pixels relative to the page view.
+-    tapTarget(x, y) {
++    // `x` and `y` are physical pixels relative to the page view; `direction`
++    // is 1 to scroll down, -1 to scroll up.
++    tapTarget(x, y, direction) {
+       const viewport = window.visualViewport
+       const scale = viewport ? viewport.scale : 1
+       const cssX = x / window.devicePixelRatio / scale
+         + (viewport ? viewport.offsetLeft : 0)
+       const cssY = y / window.devicePixelRatio / scale
+         + (viewport ? viewport.offsetTop : 0)
+-      return isInteractive(document.elementFromPoint(cssX, cssY))
+-        ? 'interactive'
+-        : 'plain'
++      const el = document.elementFromPoint(cssX, cssY)
++      if (isInteractive(el)) {
++        return 'interactive'
++      }
++      return canScroll(el, direction) ? 'plain' : 'edge'
+     },
+ 
+     hideSelection(mode) {
