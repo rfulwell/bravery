@@ -1,0 +1,38 @@
+# Daily, on free GitHub runners: do Bravery's default filter-list subscriptions
+# still match the lists Brave enables by default on Android? Brave delivers its
+# lists with a keyed component, so Bravery subscribes to their public sources
+# and has to follow Brave's catalog by hand.
+name: Check filter lists
+
+on:
+  schedule:
+    - cron: '41 6 * * *'
+  push:
+    paths:
+      - 'patches/**'
+      - 'scripts/check-filter-lists.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare with Brave's catalog
+        run: scripts/check-filter-lists.py --report "$RUNNER_TEMP/filter-lists.md"
+      - name: Open an issue
+        if: failure() && github.event_name == 'schedule'
+        run: |
+          # No report means the check itself failed (e.g. the catalog was unreachable).
+          [ -s "$RUNNER_TEMP/filter-lists.md" ] || exit 1
+          title="Brave's default filter lists changed"
+          if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')" ]; then
+            { cat "$RUNNER_TEMP/filter-lists.md"; echo; echo "See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"; } > "$RUNNER_TEMP/issue.md"
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/issue.md"
+          fi

@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 22:38:18 +0000
+Subject: [PATCH 8/8] Bravery: subscribe to the sources of Brave's default
+ lists
+
+Replace the EasyList-only default with the 30 source URLs of the lists Brave
+enables by default on Android (list_catalog.json in brave/adblock-resources).
+Track added URLs in a list pref, so new URLs reach existing installs and a
+list the user removes stays removed.
+---
+ .../content/browser/ad_block_service.cc       |  3 +-
+ .../ad_block_subscription_service_manager.cc  | 95 +++++++++++++++++--
+ .../ad_block_subscription_service_manager.h   |  5 +-
+ 3 files changed, 90 insertions(+), 13 deletions(-)
+
+diff --git a/components/brave_shields/content/browser/ad_block_service.cc b/components/brave_shields/content/browser/ad_block_service.cc
+index 89f9f087b55..723175af30b 100644
+--- a/components/brave_shields/content/browser/ad_block_service.cc
++++ b/components/brave_shields/content/browser/ad_block_service.cc
+@@ -456,8 +456,7 @@ void RegisterPrefsForAdBlockService(PrefRegistrySimple* registry) {
+   registry->RegisterStringPref(prefs::kAdBlockCustomFilters, std::string());
+   registry->RegisterDictionaryPref(prefs::kAdBlockRegionalFilters);
+   registry->RegisterDictionaryPref(prefs::kAdBlockListSubscriptions);
+-  registry->RegisterBooleanPref(kBraveryDefaultSubscriptionsAdded,
+-                                false);
++  registry->RegisterListPref(kBraveryDefaultSubscriptionsAdded);
+   registry->RegisterBooleanPref(prefs::kAdBlockCheckedDefaultRegion, false);
+   registry->RegisterBooleanPref(prefs::kAdBlockCheckedAllDefaultRegions, false);
+   registry->RegisterBooleanPref(prefs::kAdBlockOnlyModeEnabled, false);
+diff --git a/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc b/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
+index dfc49c570ba..e07e0801dc6 100644
+--- a/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
++++ b/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
+@@ -44,9 +44,75 @@ constexpr uint16_t kSubscriptionMaxExpiresHours = 14 * 24;
+ constexpr base::TimeDelta kListRetryInterval = base::Hours(1);
+ constexpr base::TimeDelta kListCheckInitialDelay = base::Minutes(1);
+ // Bravery: Brave's own lists come from its component updater, which needs a
+-// private services key, so subscribe to EasyList directly instead.
+-constexpr char kBraveryEasyListUrl[] =
+-    "https://easylist.to/easylist/easylist.txt";
++// private services key, so subscribe directly to the sources of the lists
++// Brave enables by default on Android (filter_lists/list_catalog.json in
++// brave/adblock-resources). scripts/check-filter-lists.py in the Bravery repo
++// compares this array with the live catalog.
++// BRAVERY_DEFAULT_SUBSCRIPTIONS_BEGIN
++constexpr const char* kBraveryDefaultSubscriptionUrls[] = {
++    // Brave Default Adblock Filters
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters-2020.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters-2021.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters-2022.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters-2023.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters-2024.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters-2025.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters-2026.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "filters-general.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "badware.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "resource-abuse.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "unbreak.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "quick-fixes.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "ubo-link-shorteners.txt",
++    "https://easylist.to/easylist/easylist.txt",
++    "https://malware-filter.gitlab.io/malware-filter/"
++    "urlhaus-filter-agh-online.txt",
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/"
++    "brave-unbreak.txt",
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/"
++    "brave-specific.txt",
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/"
++    "brave-social.txt",
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/"
++    "brave-unbreak.txt",
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/"
++    "brave-android-specific.txt",
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/"
++    "brave-sugarcoat.txt",
++    // Brave Default Privacy Filters
++    "https://easylist.to/easylist/easyprivacy.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "privacy.txt",
++    // Brave First Party Adblock Filters
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/"
++    "brave-firstparty.txt",
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/"
++    "brave-firstparty-regional.txt",
++    // Cookie notice blocker
++    "https://secure.fanboy.co.nz/fanboy-cookiemonster_ubo.txt",
++    "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/"
++    "annoyances-cookies.txt",
++    "https://raw.githubusercontent.com/brave/adblock-lists/master/brave-lists/"
++    "brave-cookie-specific.txt",
++    // Mobile app promo blocker
++    "https://secure.fanboy.co.nz/fanboy-mobile-notifications.txt",
++};
++// BRAVERY_DEFAULT_SUBSCRIPTIONS_END
+ 
+ bool SkipGURLField(std::string_view value, GURL* field) {
+   return true;
+@@ -456,18 +522,29 @@ void AdBlockSubscriptionServiceManager::LoadSubscriptionServices() {
+   }
+ }
+ 
+-// Bravery: adds the default lists once, so a list the user removes stays
+-// removed.
++// Bravery: adds each default list once, so lists added to the array later
++// reach existing installs and a list the user removes stays removed.
+ void AdBlockSubscriptionServiceManager::AddBraveryDefaultSubscriptions() {
+   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+ 
+-  if (!local_state_ ||
+-      local_state_->GetBoolean(kBraveryDefaultSubscriptionsAdded)) {
++  if (!local_state_) {
+     return;
+   }
+ 
+-  CreateSubscription(GURL(kBraveryEasyListUrl));
+-  local_state_->SetBoolean(kBraveryDefaultSubscriptionsAdded, true);
++  base::ListValue added =
++      local_state_->GetList(kBraveryDefaultSubscriptionsAdded).Clone();
++  bool changed = false;
++  for (const char* url : kBraveryDefaultSubscriptionUrls) {
++    if (added.contains(url)) {
++      continue;
++    }
++    CreateSubscription(GURL(url));
++    added.Append(url);
++    changed = true;
++  }
++  if (changed) {
++    local_state_->SetList(kBraveryDefaultSubscriptionsAdded, std::move(added));
++  }
+ }
+ 
+ // Updates preferences to reflect a new state for the specified filter list
+diff --git a/components/brave_shields/content/browser/ad_block_subscription_service_manager.h b/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
+index 871959cbb22..52c94eb2543 100644
+--- a/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
++++ b/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
+@@ -45,9 +45,10 @@ namespace brave_shields {
+ 
+ inline constexpr uint16_t kSubscriptionDefaultExpiresHours = 7 * 24;
+ 
+-// Bravery: local state pref, set once the default subscriptions are added.
++// Bravery: local state pref listing the default subscription URLs already
++// added, so each is added once and stays removed if the user removes it.
+ inline constexpr char kBraveryDefaultSubscriptionsAdded[] =
+-    "bravery.ad_block.default_subscriptions_added";
++    "bravery.ad_block.default_subscription_urls_added";
+ 
+ struct SubscriptionInfo {
+   SubscriptionInfo();
