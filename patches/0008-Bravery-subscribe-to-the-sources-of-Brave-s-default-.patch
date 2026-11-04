@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Wed, 4 Nov 2026 22:38:18 +0000
-Subject: [PATCH 8/8] Bravery: subscribe to the sources of Brave's default
+Subject: [PATCH 8/9] Bravery: subscribe to the sources of Brave's default
  lists
 
 Replace the EasyList-only default with the 30 source URLs of the lists Brave

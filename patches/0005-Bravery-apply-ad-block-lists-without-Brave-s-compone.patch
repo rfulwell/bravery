@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 1 Nov 2026 19:35:49 +0000
-Subject: [PATCH 5/8] Bravery: apply ad-block lists without Brave's components
+Subject: [PATCH 5/9] Bravery: apply ad-block lists without Brave's components
 
 Brave's component updater needs a private services key, so the filter list
 catalog never loads.

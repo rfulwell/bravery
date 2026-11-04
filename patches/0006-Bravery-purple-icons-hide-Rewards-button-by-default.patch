@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 1 Nov 2026 19:35:49 +0000
-Subject: [PATCH 6/8] Bravery: purple icons, hide Rewards button by default
+Subject: [PATCH 6/9] Bravery: purple icons, hide Rewards button by default
 
 - Purple launcher icon and toolbar Shields lion.
 - Hide the Brave Rewards toolbar button unless the user turns it on.

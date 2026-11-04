@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 23:06:48 +0000
+Subject: [PATCH 9/9] Bravery: close the current tab from the bottom-left
+ toolbar button
+
+The bottom toolbar's home/new-tab button becomes a close-tab button,
+using the same call as the "Close tab" menu item (undo snackbar included).
+---
+ .../bottom/BottomToolbarCoordinator.java      | 36 +++++++++----------
+ 1 file changed, 16 insertions(+), 20 deletions(-)
+
+diff --git a/android/java/org/chromium/chrome/browser/toolbar/bottom/BottomToolbarCoordinator.java b/android/java/org/chromium/chrome/browser/toolbar/bottom/BottomToolbarCoordinator.java
+index 2efbde8dffc..4d584e561c1 100644
+--- a/android/java/org/chromium/chrome/browser/toolbar/bottom/BottomToolbarCoordinator.java
++++ b/android/java/org/chromium/chrome/browser/toolbar/bottom/BottomToolbarCoordinator.java
+@@ -43,7 +43,9 @@ import org.chromium.chrome.browser.compositor.layouts.LayoutManagerImpl;
+ import org.chromium.chrome.browser.homepage.HomepageManager;
+ import org.chromium.chrome.browser.layouts.LayoutStateProvider;
+ import org.chromium.chrome.browser.layouts.LayoutType;
++import org.chromium.chrome.browser.tab.Tab;
+ import org.chromium.chrome.browser.tabmodel.IncognitoStateProvider;
++import org.chromium.chrome.browser.tabmodel.TabClosureParams;
+ import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+ import org.chromium.chrome.browser.theme.ThemeColorProvider;
+ import org.chromium.chrome.browser.toolbar.LocationBarModel;
+@@ -79,7 +81,6 @@ class BottomToolbarCoordinator implements View.OnLongClickListener {
+             mShareButtonListenerSupplier = ObservableSuppliers.createMonotonic();
+     private final CallbackController mCallbackController = new CallbackController();
+     MonotonicObservableSupplier<AppMenuButtonHelper> mMenuButtonHelperSupplier;
+-    private final Runnable mOriginalHomeButtonRunnable;
+     private final BraveScrollingBottomViewResourceFrameLayout mScrollingBottomView;
+     private @Nullable HomeButton mHomeButton;
+     private @Nullable BookmarksButton mBookmarksButton;
+@@ -136,7 +137,6 @@ class BottomToolbarCoordinator implements View.OnLongClickListener {
+         mThemeColorProvider = themeColorProvider;
+ 
+         mMenuButtonHelperSupplier = menuButtonHelperSupplier;
+-        mOriginalHomeButtonRunnable = openHomepageAction;
+         mScrollingBottomView = (BraveScrollingBottomViewResourceFrameLayout) scrollingBottomView;
+ 
+         mBottomContainerTopShadow =
+@@ -284,18 +284,19 @@ class BottomToolbarCoordinator implements View.OnLongClickListener {
+             updateHomeButtonState();
+             mHomeButton.setOnLongClickListener(this);
+ 
++            // Bravery: the bottom-left button closes the current tab, like the "Close tab" menu
++            // item (undo snackbar included).
+             final OnClickListener homeButtonListener =
+                     v -> {
+-                        if (mHomepageManager.isHomepageEnabled()) {
+-                            try {
+-                                BraveActivity.getBraveActivity().setComesFromNewTab(true);
+-                            } catch (BraveActivity.BraveActivityNotFoundException e) {
+-                                Log.e(TAG, "HomeButton click " + e);
+-                            }
+-                            mOriginalHomeButtonRunnable.run();
+-                        } else {
+-                            newTabClickListener.onClick(v);
+-                        }
++                        Tab tab = tabModelSelector.getCurrentTab();
++                        if (tab == null) return;
++                        tabModelSelector
++                                .getCurrentModel()
++                                .getTabRemover()
++                                .closeTabs(
++                                        TabClosureParams.closeTab(tab).build(),
++                                        /* allowDialog= */ true);
++                        RecordUserAction.record("MobileTabClosed");
+                     };
+ 
+             mHomeButton.setOnClickListener(homeButtonListener);
+@@ -395,14 +396,9 @@ class BottomToolbarCoordinator implements View.OnLongClickListener {
+ 
+     public void updateHomeButtonState() {
+         assert (mHomeButton != null);
+-        if (!mHomepageManager.isHomepageEnabled()) {
+-            mHomeButton.setImageDrawable(
+-                    ContextCompat.getDrawable(mContext, R.drawable.new_tab_icon));
+-            mHomeButton.setEnabled(true);
+-        } else {
+-            mHomeButton.setImageDrawable(
+-                    ContextCompat.getDrawable(mContext, R.drawable.ic_browser_home));
+-        }
++        mHomeButton.setImageDrawable(ContextCompat.getDrawable(mContext, R.drawable.ic_close));
++        mHomeButton.setContentDescription(mContext.getString(R.string.close_tab));
++        mHomeButton.setEnabled(true);
+     }
+ 
+     public boolean isInTabSwitcherMode() {

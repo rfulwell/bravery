@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sun, 1 Nov 2026 20:43:34 +0000
-Subject: [PATCH 7/8] Bravery: check the page before every tap-to-scroll
+Subject: [PATCH 7/9] Bravery: check the page before every tap-to-scroll
 
 Focusing a field doesn't consume a tap, so tapping a search box in the top
 half scrolled up at the top of the page and triggered pull-to-refresh.
