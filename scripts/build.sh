@@ -146,6 +146,10 @@ BUILD_ARGS=(
 if [[ "$BRAVERY_OFFICIAL_BUILD" != 1 ]]; then
   BUILD_ARGS+=(--gn=is_official_build:false --gn=dcheck_always_on:false)
 fi
+if [[ -n "${BRAVERY_JOBS:-}" ]]; then
+  # Caps parallel compile jobs (siso's local limit) to fit a smaller Docker VM.
+  BUILD_ARGS+=(--ninja "j:$BRAVERY_JOBS")
+fi
 log "Building (several hours on a first build)"
 pnpm run build "${BUILD_ARGS[@]}"
 
