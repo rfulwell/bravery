@@ -28,7 +28,7 @@ Settings > Bravery holds all of it.
  .../java/brave-res/values/bravery_strings.xml |  70 ++++
  .../brave-res/xml/brave_main_preferences.xml  |   6 +
  .../brave-res/xml/bravery_preferences.xml     |  73 +++++
- .../browser/BraveApplicationImplBase.java     |   4 +
+ .../browser/BraveApplicationImplBase.java     |   3 +
  .../browser/bravery/BraveryBannerHider.java   | 147 +++++++++
  .../browser/bravery/BraveryContextMenu.java   | 102 ++++++
  .../browser/bravery/BraveryController.java    |  92 ++++++
@@ -48,7 +48,7 @@ Settings > Bravery holds all of it.
  .../view/BraveContentView.java                |  36 ++
  ...rowserControlsVisibilityDelegate.java.yaml |  20 ++
  .../core/input/gesture_manager.cc.yaml        |  25 ++
- 26 files changed, 1678 insertions(+)
+ 26 files changed, 1677 insertions(+)
  create mode 100644 android/java/brave-res/values/bravery_strings.xml
  create mode 100644 android/java/brave-res/xml/bravery_preferences.xml
  create mode 100644 android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
@@ -67,27 +67,20 @@ Settings > Bravery holds all of it.
  create mode 100644 rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
 
 diff --git a/android/BUILD.gn b/android/BUILD.gn
-index ad041497178..a290521576f 100644
+index e623c9bab..7bef7736c 100644
 --- a/android/BUILD.gn
 +++ b/android/BUILD.gn
-@@ -676,6 +676,7 @@ android_resources("java_resources") {
-     "java/brave-res/values/brave_attrs.xml",
-     "java/brave-res/values/brave_ids.xml",
-     "java/brave-res/values/brave_styles.xml",
+@@ -90,6 +90,8 @@ android_library("settings_insets_java") {
+ # Brave-specific resources.
+ android_resources("java_resources") {
+   sources = [
 +    "java/brave-res/values/bravery_strings.xml",
-     "java/brave-res/values/dimens.xml",
-     "java/brave-res/values/shimmer_attrs.xml",
-     "java/brave-res/xml/autofill_service_configuration.xml",
-@@ -702,6 +703,7 @@ android_resources("java_resources") {
-     "java/brave-res/xml/brave_wallet_networks_preference.xml",
-     "java/brave-res/xml/brave_wallet_preferences.xml",
-     "java/brave-res/xml/brave_webrtc_policy_preferences.xml",
 +    "java/brave-res/xml/bravery_preferences.xml",
-     "java/brave-res/xml/ens_preferences.xml",
-     "java/brave-res/xml/media_preferences.xml",
-     "java/brave-res/xml/qa_preferences.xml",
+     "java/brave-res/anim/fast_fade_in.xml",
+     "java/brave-res/anim/slide_in_bottom.xml",
+     "java/brave-res/anim/slide_in_top.xml",
 diff --git a/android/brave_java_sources.gni b/android/brave_java_sources.gni
-index 6c1023606dc..9f1d835dd3c 100644
+index 85a6893ad..8c10301c7 100644
 --- a/android/brave_java_sources.gni
 +++ b/android/brave_java_sources.gni
 @@ -68,6 +68,13 @@ brave_java_sources = [
@@ -105,7 +98,7 @@ index 6c1023606dc..9f1d835dd3c 100644
    "../../brave/android/java/org/chromium/chrome/browser/bookmarks/BraveBookmarkImportExportDialogFragment.java",
    "../../brave/android/java/org/chromium/chrome/browser/bookmarks/BraveBookmarkManagerCoordinator.java",
 diff --git a/android/java/brave-res/values/brave_ids.xml b/android/java/brave-res/values/brave_ids.xml
-index e3cf1ade12e..8f21f71bb01 100644
+index e3cf1ade1..8f21f71bb 100644
 --- a/android/java/brave-res/values/brave_ids.xml
 +++ b/android/java/brave-res/values/brave_ids.xml
 @@ -31,4 +31,8 @@
@@ -119,7 +112,7 @@ index e3cf1ade12e..8f21f71bb01 100644
  </resources>
 diff --git a/android/java/brave-res/values/bravery_strings.xml b/android/java/brave-res/values/bravery_strings.xml
 new file mode 100644
-index 00000000000..2afee93cb1a
+index 000000000..2afee93cb
 --- /dev/null
 +++ b/android/java/brave-res/values/bravery_strings.xml
 @@ -0,0 +1,70 @@
@@ -194,7 +187,7 @@ index 00000000000..2afee93cb1a
 +    </string-array>
 +</resources>
 diff --git a/android/java/brave-res/xml/brave_main_preferences.xml b/android/java/brave-res/xml/brave_main_preferences.xml
-index 42f124fc2e2..9950c3057d5 100644
+index 42f124fc2..9950c3057 100644
 --- a/android/java/brave-res/xml/brave_main_preferences.xml
 +++ b/android/java/brave-res/xml/brave_main_preferences.xml
 @@ -97,6 +97,12 @@
@@ -212,7 +205,7 @@ index 42f124fc2e2..9950c3057d5 100644
          android:key="brave_appearance"
 diff --git a/android/java/brave-res/xml/bravery_preferences.xml b/android/java/brave-res/xml/bravery_preferences.xml
 new file mode 100644
-index 00000000000..95f59117c48
+index 000000000..95f59117c
 --- /dev/null
 +++ b/android/java/brave-res/xml/bravery_preferences.xml
 @@ -0,0 +1,73 @@
@@ -290,30 +283,22 @@ index 00000000000..95f59117c48
 +    </PreferenceCategory>
 +</PreferenceScreen>
 diff --git a/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java b/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java
-index 16f23bb8160..d01b1a1a222 100644
+index 16f23bb81..5692633fe 100644
 --- a/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java
 +++ b/android/java/org/chromium/chrome/browser/BraveApplicationImplBase.java
-@@ -16,6 +16,7 @@ import org.chromium.base.Log;
- import org.chromium.build.annotations.NullMarked;
- import org.chromium.build.annotations.Nullable;
- import org.chromium.chrome.browser.base.SplitCompatApplication;
-+import org.chromium.chrome.browser.bravery.BraveryController;
- import org.chromium.chrome.browser.profiles.OriginalProfileSupplier;
- import org.chromium.chrome.browser.settings.BraveSearchEngineUtils;
- import org.chromium.chrome.browser.vpn.utils.BraveVpnProfileUtils;
-@@ -64,6 +65,9 @@ public class BraveApplicationImplBase extends SplitCompatApplication.Impl {
+@@ -64,6 +64,9 @@ public class BraveApplicationImplBase extends SplitCompatApplication.Impl {
              SafeBrowsingApiBridge.setSafeBrowsingApiHandler(
                      BraveSafeBrowsingApiHandler.getInstance());
  
 +            // Bravery: tap to scroll and banner hiding hook into every page view.
-+            BraveryController.install();
++            org.chromium.chrome.browser.bravery.BraveryController.install();
 +
              // Apply Brave's default search engine as soon as the profile exists, instead of
              // waiting for BraveActivity. Entry points such as the search widget resolve queries
              // through SearchActivity, which never runs BraveActivity and would otherwise search
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
 new file mode 100644
-index 00000000000..cde231a4382
+index 000000000..cde231a43
 --- /dev/null
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
 @@ -0,0 +1,147 @@
@@ -466,7 +451,7 @@ index 00000000000..cde231a4382
 +}
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryContextMenu.java b/android/java/org/chromium/chrome/browser/bravery/BraveryContextMenu.java
 new file mode 100644
-index 00000000000..07a2adffa06
+index 000000000..07a2adffa
 --- /dev/null
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryContextMenu.java
 @@ -0,0 +1,102 @@
@@ -574,7 +559,7 @@ index 00000000000..07a2adffa06
 +}
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryController.java b/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
 new file mode 100644
-index 00000000000..ad2edb98c07
+index 000000000..ad2edb98c
 --- /dev/null
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
 @@ -0,0 +1,92 @@
@@ -672,7 +657,7 @@ index 00000000000..ad2edb98c07
 +}
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryPreferences.java b/android/java/org/chromium/chrome/browser/bravery/BraveryPreferences.java
 new file mode 100644
-index 00000000000..8639a47dff9
+index 000000000..8639a47df
 --- /dev/null
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryPreferences.java
 @@ -0,0 +1,92 @@
@@ -770,7 +755,7 @@ index 00000000000..8639a47dff9
 +}
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryPrefs.java b/android/java/org/chromium/chrome/browser/bravery/BraveryPrefs.java
 new file mode 100644
-index 00000000000..549288d6701
+index 000000000..549288d67
 --- /dev/null
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryPrefs.java
 @@ -0,0 +1,159 @@
@@ -935,7 +920,7 @@ index 00000000000..549288d6701
 +}
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraverySelectionMenuDelegate.java b/android/java/org/chromium/chrome/browser/bravery/BraverySelectionMenuDelegate.java
 new file mode 100644
-index 00000000000..98bae4bc5e4
+index 000000000..98bae4bc5
 --- /dev/null
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraverySelectionMenuDelegate.java
 @@ -0,0 +1,99 @@
@@ -1040,7 +1025,7 @@ index 00000000000..98bae4bc5e4
 +}
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
 new file mode 100644
-index 00000000000..a8717295eb4
+index 000000000..a8717295e
 --- /dev/null
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
 @@ -0,0 +1,309 @@
@@ -1354,7 +1339,7 @@ index 00000000000..a8717295eb4
 +    }
 +}
 diff --git a/android/java/org/chromium/chrome/browser/contextmenu/BraveChromeContextMenuPopulator.java b/android/java/org/chromium/chrome/browser/contextmenu/BraveChromeContextMenuPopulator.java
-index b576419c145..28603e2ad2b 100644
+index b576419c1..28603e2ad 100644
 --- a/android/java/org/chromium/chrome/browser/contextmenu/BraveChromeContextMenuPopulator.java
 +++ b/android/java/org/chromium/chrome/browser/contextmenu/BraveChromeContextMenuPopulator.java
 @@ -10,6 +10,7 @@ import android.content.Context;
@@ -1398,7 +1383,7 @@ index b576419c145..28603e2ad2b 100644
              return super.onItemSelected(itemId);
          }
 diff --git a/android/java/org/chromium/chrome/browser/settings/BraveMainPreferencesBase.java b/android/java/org/chromium/chrome/browser/settings/BraveMainPreferencesBase.java
-index 505d7d2bad3..e60cdbade3d 100644
+index 904d59b7e..2bb351b54 100644
 --- a/android/java/org/chromium/chrome/browser/settings/BraveMainPreferencesBase.java
 +++ b/android/java/org/chromium/chrome/browser/settings/BraveMainPreferencesBase.java
 @@ -92,6 +92,7 @@ public abstract class BraveMainPreferencesBase extends BravePreferenceFragment
@@ -1419,7 +1404,7 @@ index 505d7d2bad3..e60cdbade3d 100644
          setPreferenceOrder(PREF_BRAVE_WALLET, ++featuresSectionOrder);
 diff --git a/browser/android/bravery/BUILD.gn b/browser/android/bravery/BUILD.gn
 new file mode 100644
-index 00000000000..cdd76e09496
+index 000000000..cdd76e094
 --- /dev/null
 +++ b/browser/android/bravery/BUILD.gn
 @@ -0,0 +1,28 @@
@@ -1453,7 +1438,7 @@ index 00000000000..cdd76e09496
 +}
 diff --git a/browser/android/bravery/DEPS b/browser/android/bravery/DEPS
 new file mode 100644
-index 00000000000..9a7c552c3e6
+index 000000000..9a7c552c3
 --- /dev/null
 +++ b/browser/android/bravery/DEPS
 @@ -0,0 +1,4 @@
@@ -1463,7 +1448,7 @@ index 00000000000..9a7c552c3e6
 +]
 diff --git a/browser/android/bravery/bravery_banner_hider.js b/browser/android/bravery/bravery_banner_hider.js
 new file mode 100644
-index 00000000000..e7f31db77ca
+index 000000000..e7f31db77
 --- /dev/null
 +++ b/browser/android/bravery/bravery_banner_hider.js
 @@ -0,0 +1,299 @@
@@ -1768,7 +1753,7 @@ index 00000000000..e7f31db77ca
 +})()
 diff --git a/browser/android/bravery/bravery_banner_hider_android.cc b/browser/android/bravery/bravery_banner_hider_android.cc
 new file mode 100644
-index 00000000000..c226b8b9552
+index 000000000..c226b8b95
 --- /dev/null
 +++ b/browser/android/bravery/bravery_banner_hider_android.cc
 @@ -0,0 +1,61 @@
@@ -1835,7 +1820,7 @@ index 00000000000..c226b8b9552
 +DEFINE_JNI(BraveryBannerHider)
 diff --git a/browser/android/bravery/generate_script_header.py b/browser/android/bravery/generate_script_header.py
 new file mode 100644
-index 00000000000..9f8edef367e
+index 000000000..9f8edef36
 --- /dev/null
 +++ b/browser/android/bravery/generate_script_header.py
 @@ -0,0 +1,28 @@
@@ -1868,10 +1853,10 @@ index 00000000000..9f8edef367e
 +if __name__ == '__main__':
 +    main(*sys.argv[1:])
 diff --git a/browser/sources.gni b/browser/sources.gni
-index 57f84627322..ff1ff06f924 100644
+index 22d2163d7..ab7a64eb6 100644
 --- a/browser/sources.gni
 +++ b/browser/sources.gni
-@@ -645,6 +645,7 @@ if (is_android) {
+@@ -664,6 +664,7 @@ if (is_android) {
      "//brave/browser/android:android_browser_process",
      "//brave/browser/android:tabs_impl",
      "//brave/browser/android/preferences",
@@ -1880,10 +1865,10 @@ index 57f84627322..ff1ff06f924 100644
      "//brave/browser/android/youtube_script_injector",
      "//brave/browser/android/youtube_script_injector:features",
 diff --git a/build/android/config.gni b/build/android/config.gni
-index a66d9dec917..ba644dad157 100644
+index 4c2d8a8bc..a3582b11c 100644
 --- a/build/android/config.gni
 +++ b/build/android/config.gni
-@@ -143,6 +143,7 @@ brave_jni_headers_sources = [
+@@ -150,6 +150,7 @@ brave_jni_headers_sources = [
    "//brave/android/java/org/chromium/chrome/browser/BraveRewardsNativeWorker.java",
    "//brave/android/java/org/chromium/chrome/browser/BraveSyncWorker.java",
    "//brave/android/java/org/chromium/chrome/browser/app/BraveActivity.java",
@@ -1892,7 +1877,7 @@ index a66d9dec917..ba644dad157 100644
    "//brave/android/java/org/chromium/chrome/browser/brave_leo/BraveLeoMojomHelper.java",
    "//brave/android/java/org/chromium/chrome/browser/brave_leo/BraveLeoUtils.java",
 diff --git a/components/embedder_support/android/java/src/org/chromium/components/embedder_support/view/BraveContentView.java b/components/embedder_support/android/java/src/org/chromium/components/embedder_support/view/BraveContentView.java
-index 9e5f408ba95..785493e1565 100644
+index 9e5f408ba..785493e15 100644
 --- a/components/embedder_support/android/java/src/org/chromium/components/embedder_support/view/BraveContentView.java
 +++ b/components/embedder_support/android/java/src/org/chromium/components/embedder_support/view/BraveContentView.java
 @@ -6,6 +6,7 @@
@@ -1949,7 +1934,7 @@ index 9e5f408ba95..785493e1565 100644
      @Override
 diff --git a/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml b/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
 new file mode 100644
-index 00000000000..30f9ee50d07
+index 000000000..30f9ee50d
 --- /dev/null
 +++ b/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
 @@ -0,0 +1,20 @@
@@ -1975,7 +1960,7 @@ index 00000000000..30f9ee50d07
 +                                .shouldHideToolbarWithAccessibility()) {
 diff --git a/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml b/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
 new file mode 100644
-index 00000000000..f2c8c314d70
+index 000000000..f2c8c314d
 --- /dev/null
 +++ b/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
 @@ -0,0 +1,25 @@

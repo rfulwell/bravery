@@ -16,10 +16,10 @@ catalog never loads.
  4 files changed, 30 insertions(+), 1 deletion(-)
 
 diff --git a/components/brave_shields/content/browser/ad_block_service.cc b/components/brave_shields/content/browser/ad_block_service.cc
-index 903ee8f36d4..89f9f087b55 100644
+index ebbd6c499..668039527 100644
 --- a/components/brave_shields/content/browser/ad_block_service.cc
 +++ b/components/brave_shields/content/browser/ad_block_service.cc
-@@ -456,6 +456,8 @@ void RegisterPrefsForAdBlockService(PrefRegistrySimple* registry) {
+@@ -458,6 +458,8 @@ void RegisterPrefsForAdBlockService(PrefRegistrySimple* registry) {
    registry->RegisterStringPref(prefs::kAdBlockCustomFilters, std::string());
    registry->RegisterDictionaryPref(prefs::kAdBlockRegionalFilters);
    registry->RegisterDictionaryPref(prefs::kAdBlockListSubscriptions);
@@ -29,10 +29,10 @@ index 903ee8f36d4..89f9f087b55 100644
    registry->RegisterBooleanPref(prefs::kAdBlockCheckedAllDefaultRegions, false);
    registry->RegisterBooleanPref(prefs::kAdBlockOnlyModeEnabled, false);
 diff --git a/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc b/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
-index 9066812ccd1..dfc49c570ba 100644
+index a9a9ef15a..1d4c94eec 100644
 --- a/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
 +++ b/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
-@@ -43,6 +43,10 @@ namespace {
+@@ -44,6 +44,10 @@ namespace {
  constexpr uint16_t kSubscriptionMaxExpiresHours = 14 * 24;
  constexpr base::TimeDelta kListRetryInterval = base::Hours(1);
  constexpr base::TimeDelta kListCheckInitialDelay = base::Minutes(1);
@@ -43,7 +43,7 @@ index 9066812ccd1..dfc49c570ba 100644
  
  bool SkipGURLField(std::string_view value, GURL* field) {
    return true;
-@@ -345,6 +349,7 @@ void AdBlockSubscriptionServiceManager::OnGetDownloadManager(
+@@ -347,6 +351,7 @@ void AdBlockSubscriptionServiceManager::OnGetDownloadManager(
  
    download_manager_->CancelAllPendingDownloads();
    LoadSubscriptionServices();
@@ -51,7 +51,7 @@ index 9066812ccd1..dfc49c570ba 100644
  
    subscription_update_timer_->Schedule(
        kListCheckInitialDelay, kListRetryInterval,
-@@ -451,6 +456,20 @@ void AdBlockSubscriptionServiceManager::LoadSubscriptionServices() {
+@@ -453,6 +458,20 @@ void AdBlockSubscriptionServiceManager::LoadSubscriptionServices() {
    }
  }
  
@@ -73,7 +73,7 @@ index 9066812ccd1..dfc49c570ba 100644
  // subscription. Creates the entry if it does not yet exist.
  void AdBlockSubscriptionServiceManager::UpdateSubscriptionPrefs(
 diff --git a/components/brave_shields/content/browser/ad_block_subscription_service_manager.h b/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
-index fe8e59ce6c2..871959cbb22 100644
+index fe8e59ce6..871959cbb 100644
 --- a/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
 +++ b/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
 @@ -45,6 +45,10 @@ namespace brave_shields {
@@ -96,7 +96,7 @@ index fe8e59ce6c2..871959cbb22 100644
                                 const SubscriptionInfo& info);
    void ClearSubscriptionPrefs(const GURL& sub_url);
 diff --git a/components/brave_shields/core/common/features.cc b/components/brave_shields/core/common/features.cc
-index 471d1bc22aa..707a0ae46a1 100644
+index 471d1bc22..707a0ae46 100644
 --- a/components/brave_shields/core/common/features.cc
 +++ b/components/brave_shields/core/common/features.cc
 @@ -162,8 +162,11 @@ BASE_FEATURE(kShowUpdatedShieldsPanel, base::FEATURE_ENABLED_BY_DEFAULT);

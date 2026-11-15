@@ -14,7 +14,7 @@ build (all a Pixel 7 or later can run) passes gn gen.
 
 diff --git a/rewrite/chrome/android/expectations/expectations.gni.yaml b/rewrite/chrome/android/expectations/expectations.gni.yaml
 new file mode 100644
-index 00000000000..2edd5b07d86
+index 000000000..2edd5b07d
 --- /dev/null
 +++ b/rewrite/chrome/android/expectations/expectations.gni.yaml
 @@ -0,0 +1,18 @@

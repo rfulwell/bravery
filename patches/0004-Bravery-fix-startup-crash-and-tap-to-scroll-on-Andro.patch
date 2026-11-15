@@ -19,7 +19,7 @@ Subject: [PATCH 4/9] Bravery: fix startup crash and tap to scroll on Android
  4 files changed, 100 insertions(+), 32 deletions(-)
 
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
-index cde231a4382..c913565fb8f 100644
+index cde231a43..c913565fb 100644
 --- a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
 @@ -51,6 +51,22 @@ public final class BraveryBannerHider {
@@ -46,7 +46,7 @@ index cde231a4382..c913565fb8f 100644
      public static void hideSelection(WebContents webContents, String mode) {
          run(
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryController.java b/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
-index ad2edb98c07..7518020c2af 100644
+index ad2edb98c..7518020c2 100644
 --- a/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryController.java
 @@ -40,7 +40,7 @@ public final class BraveryController implements BraveContentView.BraveryHook {
@@ -94,7 +94,7 @@ index ad2edb98c07..7518020c2af 100644
          }
  
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
-index a8717295eb4..6d770b9d32e 100644
+index a8717295e..6d770b9d3 100644
 --- a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
 @@ -30,7 +30,7 @@ final class BraveryTapToScroll extends GestureStateListener {
@@ -208,7 +208,7 @@ index a8717295eb4..6d770b9d32e 100644
  
      @Override
 diff --git a/browser/android/bravery/bravery_banner_hider.js b/browser/android/bravery/bravery_banner_hider.js
-index e7f31db77ca..66a5ecba2e8 100644
+index e7f31db77..66a5ecba2 100644
 --- a/browser/android/bravery/bravery_banner_hider.js
 +++ b/browser/android/bravery/bravery_banner_hider.js
 @@ -67,6 +67,26 @@ html[${HIDDEN_ATTR}] [${ATTR}="autohide"][${EDGE_ATTR}="bottom"] {

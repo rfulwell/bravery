@@ -11,7 +11,7 @@ the Play Store build of Brave.
  1 file changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/app/theme/brave/android/res_brave_base/values/channel_constants.xml b/app/theme/brave/android/res_brave_base/values/channel_constants.xml
-index 4759d6a86c0..f9520b7f8b5 100644
+index 4759d6a86..f9520b7f8 100644
 --- a/app/theme/brave/android/res_brave_base/values/channel_constants.xml
 +++ b/app/theme/brave/android/res_brave_base/values/channel_constants.xml
 @@ -5,8 +5,8 @@

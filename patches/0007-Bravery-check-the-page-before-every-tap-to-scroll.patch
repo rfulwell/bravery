@@ -14,7 +14,7 @@ interactive elements and there is room to scroll in that direction.
  3 files changed, 42 insertions(+), 21 deletions(-)
 
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
-index c913565fb8f..5b6778adf4c 100644
+index c913565fb..5b6778adf 100644
 --- a/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryBannerHider.java
 @@ -52,19 +52,20 @@ public final class BraveryBannerHider {
@@ -46,7 +46,7 @@ index c913565fb8f..5b6778adf4c 100644
  
      /** Hides the banner containing the current text selection. */
 diff --git a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
-index 6d770b9d32e..0a7bf0385f7 100644
+index 6d770b9d3..0a7bf0385 100644
 --- a/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
 +++ b/android/java/org/chromium/chrome/browser/bravery/BraveryTapToScroll.java
 @@ -114,21 +114,19 @@ final class BraveryTapToScroll extends GestureStateListener {
@@ -79,7 +79,7 @@ index 6d770b9d32e..0a7bf0385f7 100644
                  });
      }
 diff --git a/browser/android/bravery/bravery_banner_hider.js b/browser/android/bravery/bravery_banner_hider.js
-index 66a5ecba2e8..063cf6ab0f0 100644
+index 66a5ecba2..063cf6ab0 100644
 --- a/browser/android/bravery/bravery_banner_hider.js
 +++ b/browser/android/bravery/bravery_banner_hider.js
 @@ -87,6 +87,25 @@ html[${HIDDEN_ATTR}] [${ATTR}="autohide"][${EDGE_ATTR}="bottom"] {

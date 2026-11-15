@@ -31,20 +31,20 @@ Subject: [PATCH 6/9] Bravery: purple icons, hide Rewards button by default
  create mode 100644 android/java/brave-res/drawable/bravery_shields_icon.xml
 
 diff --git a/android/BUILD.gn b/android/BUILD.gn
-index a290521576f..88badf35509 100644
+index 7bef7736c..354593a3d 100644
 --- a/android/BUILD.gn
 +++ b/android/BUILD.gn
-@@ -220,6 +220,7 @@ android_resources("java_resources") {
-     "java/brave-res/drawable/brave_sync_tab_layout_bg.xml",
-     "java/brave-res/drawable/brave_sync_top_rounded.xml",
-     "java/brave-res/drawable/brave_sync_top_rounded_light.xml",
+@@ -90,6 +90,7 @@ android_library("settings_insets_java") {
+ # Brave-specific resources.
+ android_resources("java_resources") {
+   sources = [
 +    "java/brave-res/drawable/bravery_shields_icon.xml",
-     "java/brave-res/drawable/button_full.xml",
-     "java/brave-res/drawable/button_outline.xml",
-     "java/brave-res/drawable/button_transparent.xml",
+     "java/brave-res/values/bravery_strings.xml",
+     "java/brave-res/xml/bravery_preferences.xml",
+     "java/brave-res/anim/fast_fade_in.xml",
 diff --git a/android/java/brave-res/drawable/bravery_shields_icon.xml b/android/java/brave-res/drawable/bravery_shields_icon.xml
 new file mode 100644
-index 00000000000..88fc814521c
+index 000000000..88fc81452
 --- /dev/null
 +++ b/android/java/brave-res/drawable/bravery_shields_icon.xml
 @@ -0,0 +1,35 @@
@@ -84,7 +84,7 @@ index 00000000000..88fc814521c
 +        android:pathData="M14.2 15.83c0.47 0.25 0.82 0.42 0.94 0.5 0.17 0.1 0.07 0.3-0.08 0.41a129 129 0 0 0-2.4 1.86l-0.08 0.08c-0.19 0.17-0.43 0.39-0.6 0.39s-0.42-0.22-0.61-0.4l-0.08-0.07a124 124 0 0 0-2.4-1.86c-0.15-0.1-0.25-0.3-0.08-0.4 0.13-0.09 0.47-0.26 0.95-0.51l0.46-0.24c0.72-0.37 1.62-0.69 1.76-0.69s1.03 0.32 1.75 0.7z"/>
 +</vector>
 diff --git a/android/java/brave-res/layout/brave_custom_tabs_toolbar.xml b/android/java/brave-res/layout/brave_custom_tabs_toolbar.xml
-index a395ab4ff7a..04456d92e7a 100644
+index a395ab4ff..04456d92e 100644
 --- a/android/java/brave-res/layout/brave_custom_tabs_toolbar.xml
 +++ b/android/java/brave-res/layout/brave_custom_tabs_toolbar.xml
 @@ -11,7 +11,7 @@
@@ -97,7 +97,7 @@ index a395ab4ff7a..04456d92e7a 100644
          android:layout_gravity="center_vertical|end"
          android:contentDescription="@string/accessibility_toolbar_btn_brave_shields" />
 diff --git a/android/java/brave-res/layout/brave_toolbar.xml b/android/java/brave-res/layout/brave_toolbar.xml
-index 7c058cc9e2b..a429f9fdb32 100644
+index 7c058cc9e..a429f9fdb 100644
 --- a/android/java/brave-res/layout/brave_toolbar.xml
 +++ b/android/java/brave-res/layout/brave_toolbar.xml
 @@ -64,7 +64,7 @@
@@ -110,10 +110,10 @@ index 7c058cc9e2b..a429f9fdb32 100644
            android:contentDescription="@string/accessibility_toolbar_btn_brave_shields" />
    </FrameLayout>
 diff --git a/android/java/org/chromium/chrome/browser/toolbar/top/BraveToolbarLayoutImpl.java b/android/java/org/chromium/chrome/browser/toolbar/top/BraveToolbarLayoutImpl.java
-index cf080def5da..1629f752a58 100644
+index 3cc0fa02d..ee0c0a30f 100644
 --- a/android/java/org/chromium/chrome/browser/toolbar/top/BraveToolbarLayoutImpl.java
 +++ b/android/java/org/chromium/chrome/browser/toolbar/top/BraveToolbarLayoutImpl.java
-@@ -1306,7 +1306,7 @@ public abstract class BraveToolbarLayoutImpl extends ToolbarLayout
+@@ -1308,7 +1308,7 @@ public abstract class BraveToolbarLayoutImpl extends ToolbarLayout
          }
          mBraveShieldsButton.setImageResource(
                  isShieldsOnForTab(tab)
@@ -6299,7 +6299,7 @@ z)cR6^VOe(HYi<&iQu;#FyyiFb1y(a+R}>pt{l9*rGgN?0t7F)I4O)Rz`ma;%|Ep#1
 c?q5nCe~i&5+NOEHyZ8cJLth=QX8ZDg0Bwu2WB>pF
 
 diff --git a/browser/ui/android/ntp_widgets/java/src/org/chromium/chrome/browser/ntp/NtpUtil.java b/browser/ui/android/ntp_widgets/java/src/org/chromium/chrome/browser/ntp/NtpUtil.java
-index ffc417a39eb..93f9aba5994 100644
+index ffc417a39..93f9aba59 100644
 --- a/browser/ui/android/ntp_widgets/java/src/org/chromium/chrome/browser/ntp/NtpUtil.java
 +++ b/browser/ui/android/ntp_widgets/java/src/org/chromium/chrome/browser/ntp/NtpUtil.java
 @@ -42,7 +42,7 @@ public class NtpUtil {

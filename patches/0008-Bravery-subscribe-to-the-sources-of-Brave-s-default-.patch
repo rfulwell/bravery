@@ -15,10 +15,10 @@ list the user removes stays removed.
  3 files changed, 90 insertions(+), 13 deletions(-)
 
 diff --git a/components/brave_shields/content/browser/ad_block_service.cc b/components/brave_shields/content/browser/ad_block_service.cc
-index 89f9f087b55..723175af30b 100644
+index 668039527..42fefb445 100644
 --- a/components/brave_shields/content/browser/ad_block_service.cc
 +++ b/components/brave_shields/content/browser/ad_block_service.cc
-@@ -456,8 +456,7 @@ void RegisterPrefsForAdBlockService(PrefRegistrySimple* registry) {
+@@ -458,8 +458,7 @@ void RegisterPrefsForAdBlockService(PrefRegistrySimple* registry) {
    registry->RegisterStringPref(prefs::kAdBlockCustomFilters, std::string());
    registry->RegisterDictionaryPref(prefs::kAdBlockRegionalFilters);
    registry->RegisterDictionaryPref(prefs::kAdBlockListSubscriptions);
@@ -29,10 +29,10 @@ index 89f9f087b55..723175af30b 100644
    registry->RegisterBooleanPref(prefs::kAdBlockCheckedAllDefaultRegions, false);
    registry->RegisterBooleanPref(prefs::kAdBlockOnlyModeEnabled, false);
 diff --git a/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc b/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
-index dfc49c570ba..e07e0801dc6 100644
+index 1d4c94eec..05c8329dd 100644
 --- a/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
 +++ b/components/brave_shields/content/browser/ad_block_subscription_service_manager.cc
-@@ -44,9 +44,75 @@ constexpr uint16_t kSubscriptionMaxExpiresHours = 14 * 24;
+@@ -45,9 +45,75 @@ constexpr uint16_t kSubscriptionMaxExpiresHours = 14 * 24;
  constexpr base::TimeDelta kListRetryInterval = base::Hours(1);
  constexpr base::TimeDelta kListCheckInitialDelay = base::Minutes(1);
  // Bravery: Brave's own lists come from its component updater, which needs a
@@ -111,7 +111,7 @@ index dfc49c570ba..e07e0801dc6 100644
  
  bool SkipGURLField(std::string_view value, GURL* field) {
    return true;
-@@ -456,18 +522,29 @@ void AdBlockSubscriptionServiceManager::LoadSubscriptionServices() {
+@@ -458,18 +524,29 @@ void AdBlockSubscriptionServiceManager::LoadSubscriptionServices() {
    }
  }
  
@@ -148,7 +148,7 @@ index dfc49c570ba..e07e0801dc6 100644
  
  // Updates preferences to reflect a new state for the specified filter list
 diff --git a/components/brave_shields/content/browser/ad_block_subscription_service_manager.h b/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
-index 871959cbb22..52c94eb2543 100644
+index 871959cbb..52c94eb25 100644
 --- a/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
 +++ b/components/brave_shields/content/browser/ad_block_subscription_service_manager.h
 @@ -45,9 +45,10 @@ namespace brave_shields {

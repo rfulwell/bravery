@@ -18,9 +18,15 @@ git clone --quiet --depth 1 --branch "$TAG" https://github.com/brave/brave-core.
 cd "$WORK/brave-core"
 
 log "Applying patches"
-GIT_COMMITTER_NAME=Bravery GIT_COMMITTER_EMAIL=bravery@localhost \
-  GIT_AUTHOR_NAME=Bravery GIT_AUTHOR_EMAIL=bravery@localhost \
-  git am -3 "$BRAVERY_ROOT"/patches/*.patch || { git am --abort; exit 3; }
+export GIT_COMMITTER_NAME=Bravery GIT_COMMITTER_EMAIL=bravery@localhost
+export GIT_AUTHOR_NAME=Bravery GIT_AUTHOR_EMAIL=bravery@localhost
+if ! git am "$BRAVERY_ROOT"/patches/*.patch; then
+  # Show exactly which hunks fail; git am's own message can name the wrong file.
+  git am --show-current-patch=diff > "$WORK/failed.patch" 2>/dev/null || true
+  git apply --check "$WORK/failed.patch" 2>&1 | head -n 20 >&2 || true
+  git am --abort || true
+  exit 3
+fi
 
 mapfile -t PLASTERS < <(git diff --name-only "HEAD~$(ls "$BRAVERY_ROOT"/patches/*.patch | wc -l)" HEAD -- rewrite/)
 if (( ${#PLASTERS[@]} )); then

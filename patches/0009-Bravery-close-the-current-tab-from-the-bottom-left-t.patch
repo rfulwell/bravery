@@ -11,7 +11,7 @@ using the same call as the "Close tab" menu item (undo snackbar included).
  1 file changed, 16 insertions(+), 20 deletions(-)
 
 diff --git a/android/java/org/chromium/chrome/browser/toolbar/bottom/BottomToolbarCoordinator.java b/android/java/org/chromium/chrome/browser/toolbar/bottom/BottomToolbarCoordinator.java
-index 2efbde8dffc..4d584e561c1 100644
+index 2efbde8df..4d584e561 100644
 --- a/android/java/org/chromium/chrome/browser/toolbar/bottom/BottomToolbarCoordinator.java
 +++ b/android/java/org/chromium/chrome/browser/toolbar/bottom/BottomToolbarCoordinator.java
 @@ -43,7 +43,9 @@ import org.chromium.chrome.browser.compositor.layouts.LayoutManagerImpl;
