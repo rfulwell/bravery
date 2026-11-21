@@ -75,10 +75,14 @@ Obtainium on your phone installs the update
 
 - **`patches/`** is a `git format-patch` series against brave-core. Most changes
   are new files, so most of the series survives Brave updates unchanged.
-- Chromium-level changes are **plaster** rules (`rewrite/*.yaml` inside the
+- Chromium-level changes are **plaster** rules (`bravery-rewrite/*.yaml` inside the
   patches): Brave's regex rewriting tool, made for surviving Chromium upgrades.
   There are two: the accessibility toolbar lock, and making Blink count a tap
   as handled when the page visibly reacted to it.
+  Plaster allows one rule file per Chromium file, and Brave keeps adding its
+  own in `rewrite/`. So at build time `scripts/merge-rewrites.py` appends
+  Bravery's rules to Brave's file for the same source, or creates the file if
+  Brave has none.
 - **Only what a Pixel needs is built:** Android, 64-bit ARM, one APK. The 32-bit
   copy of the native code (which official builds include by default, roughly
   doubling native compile time) is skipped, as are debug symbols, Java lint and

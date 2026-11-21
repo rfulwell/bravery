@@ -34,6 +34,11 @@ def check(brave_core, tag, plaster):
     text = fetch(tag, source_path)
     ok = True
     for sub in yaml.safe_load(plaster.read_text())['substitutions']:
+        if 'regex' not in sub:
+            # Brave's own non-regex rewriters (add_before_line etc.); plaster
+            # checks those during the real build.
+            print(f'skip {source_path}: {next(iter(sub.keys() - {"description", "count"}), "?")} rule')
+            continue
         rule = sub['regex']
         pattern = (re.escape(rule['pattern'])
                    if 'pattern' in rule else rule['re_pattern'])

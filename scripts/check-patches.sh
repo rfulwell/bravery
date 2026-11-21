@@ -28,7 +28,7 @@ if ! git am "$BRAVERY_ROOT"/patches/*.patch; then
   exit 3
 fi
 
-mapfile -t PLASTERS < <(git diff --name-only "HEAD~$(ls "$BRAVERY_ROOT"/patches/*.patch | wc -l)" HEAD -- rewrite/)
+mapfile -t PLASTERS < <(python3 "$BRAVERY_ROOT/scripts/merge-rewrites.py" .)
 if (( ${#PLASTERS[@]} )); then
   log "Checking plaster rules against Chromium"
   python3 "$BRAVERY_ROOT/scripts/check-plasters.py" . "${PLASTERS[@]}" || exit 3

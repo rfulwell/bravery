@@ -100,7 +100,7 @@ fi
 
 # Chromium-side changes are plaster rules (regex rewrites); turn them into
 # patches against this exact Chromium version and apply them.
-mapfile -t PLASTERS < <(git diff --name-only "$TAG" HEAD -- rewrite/)
+mapfile -t PLASTERS < <(python3 "$BRAVERY_ROOT/scripts/merge-rewrites.py" .)
 if (( ${#PLASTERS[@]} )); then
   log "Applying plaster rules: ${PLASTERS[*]}"
   if ! vpython3 tools/cr/plaster.py apply "${PLASTERS[@]}"; then
@@ -114,9 +114,9 @@ else
   [[ -d "$BRAVERY_BRAVE_CORE/vendor/depot_tools" ]] || die "--dev needs a previous full build"
   cd "$BRAVERY_BRAVE_CORE"
   export PATH="$BRAVERY_BRAVE_CORE/vendor/depot_tools:$PATH"
-  # Re-apply plaster rules that differ from the release, including uncommitted
-  # edits; plaster skips the ones that are already up to date.
-  mapfile -t PLASTERS < <(git diff --name-only "$TAG" -- rewrite/)
+  # Re-merge and re-apply Bravery's plaster rules, including uncommitted edits
+  # in bravery-rewrite/.
+  mapfile -t PLASTERS < <(python3 "$BRAVERY_ROOT/scripts/merge-rewrites.py" .)
   if (( ${#PLASTERS[@]} )); then
     log "Applying plaster rules: ${PLASTERS[*]}"
     vpython3 tools/cr/plaster.py apply "${PLASTERS[@]}"

@@ -1932,11 +1932,11 @@ index 9e5f408ba..785493e15 100644
      }
  
      @Override
-diff --git a/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml b/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
+diff --git a/bravery-rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml b/bravery-rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
 new file mode 100644
 index 000000000..30f9ee50d
 --- /dev/null
-+++ b/rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
++++ b/bravery-rewrite/chrome/android/java/src/org/chromium/chrome/browser/tab/TabStateBrowserControlsVisibilityDelegate.java.yaml
 @@ -0,0 +1,20 @@
 +# Copyright (c) 2026 The Bravery Authors. All rights reserved.
 +# This Source Code Form is subject to the terms of the Mozilla Public
@@ -1958,11 +1958,11 @@ index 000000000..30f9ee50d
 +        if (ChromeAccessibilityUtil.get().isAccessibilityEnabled()
 +                        && !org.chromium.chrome.browser.bravery.BraveryPrefs
 +                                .shouldHideToolbarWithAccessibility()) {
-diff --git a/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml b/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
+diff --git a/bravery-rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml b/bravery-rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
 new file mode 100644
 index 000000000..f2c8c314d
 --- /dev/null
-+++ b/rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
++++ b/bravery-rewrite/third_party/blink/renderer/core/input/gesture_manager.cc.yaml
 @@ -0,0 +1,25 @@
 +# Copyright (c) 2026 The Bravery Authors. All rights reserved.
 +# This Source Code Form is subject to the terms of the Mozilla Public

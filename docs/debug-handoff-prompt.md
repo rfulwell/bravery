@@ -16,7 +16,7 @@ adds three features:
 
 The code lives as a `git format-patch` series against brave-core in
 `~/bravery/patches/`. Chromium-level changes are "plaster" regex rules
-(`rewrite/*.yaml`) inside those patches. Brave documents them in
+(`bravery-rewrite/*.yaml`, merged into Brave's `rewrite/` at build time by `scripts/merge-rewrites.py`) inside those patches. Brave documents them in
 `docs/plaster.md` in brave-core.
 
 Where the code lives, inside the patches:
@@ -29,7 +29,7 @@ Where the code lives, inside the patches:
 | `android/java/.../contextmenu/BraveChromeContextMenuPopulator.java` | Adds Bravery's long-press menu items |
 | `android/java/.../settings/BraveMainPreferencesBase.java`, `android/java/brave-res/xml/brave_main_preferences.xml` | Settings → Bravery entry |
 | `browser/android/bravery/` | JNI bridge + `bravery_banner_hider.js`, run in Brave's internal isolated world |
-| `rewrite/.../TabStateBrowserControlsVisibilityDelegate.java.yaml`, `rewrite/.../gesture_manager.cc.yaml`, `rewrite/chrome/android/expectations/expectations.gni.yaml` | Plaster rules |
+| `bravery-rewrite/.../TabStateBrowserControlsVisibilityDelegate.java.yaml`, `bravery-rewrite/.../gesture_manager.cc.yaml`, `bravery-rewrite/chrome/android/expectations/expectations.gni.yaml` | Plaster rules |
 | `app/theme/brave/android/res_brave_base/values/channel_constants.xml` | App name |
 
 None of this had run on a device before this build. The Java was only

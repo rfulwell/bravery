@@ -12,11 +12,11 @@ build (all a Pixel 7 or later can run) passes gn gen.
  1 file changed, 18 insertions(+)
  create mode 100644 rewrite/chrome/android/expectations/expectations.gni.yaml
 
-diff --git a/rewrite/chrome/android/expectations/expectations.gni.yaml b/rewrite/chrome/android/expectations/expectations.gni.yaml
+diff --git a/bravery-rewrite/chrome/android/expectations/expectations.gni.yaml b/bravery-rewrite/chrome/android/expectations/expectations.gni.yaml
 new file mode 100644
 index 000000000..2edd5b07d
 --- /dev/null
-+++ b/rewrite/chrome/android/expectations/expectations.gni.yaml
++++ b/bravery-rewrite/chrome/android/expectations/expectations.gni.yaml
 @@ -0,0 +1,18 @@
 +# Copyright (c) 2026 The Bravery Authors. All rights reserved.
 +# This Source Code Form is subject to the terms of the Mozilla Public
