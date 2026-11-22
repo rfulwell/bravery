@@ -170,8 +170,29 @@ if [[ -n "${BRAVERY_JOBS:-}" ]]; then
   # Caps parallel compile jobs (siso's local limit) to fit a smaller Docker VM.
   BUILD_ARGS+=(--ninja "j:$BRAVERY_JOBS")
 fi
+# Generated files a target no longer lists, left in $OUT_DIR by a build of an
+# older Brave version; Android resource steps refuse to run with them present.
+stale_outputs() {
+  [[ -f "$OUT_DIR/siso_output" ]] || return 0
+  sed -n '/Found files not listed in the sources list/,/^[[:space:]]*$/p' "$OUT_DIR/siso_output" \
+    | grep -E '^gen/[^[:space:]]+$' | grep -v '\.\.' | sort -u || true
+}
+
 log "Building (several hours on a first build)"
-if ! pnpm run build "${BUILD_ARGS[@]}"; then
+for attempt in 1 2 3 4; do
+  pnpm run build "${BUILD_ARGS[@]}" && break
+  mapfile -t STALE < <(stale_outputs)
+  if (( attempt < 4 && ${#STALE[@]} )); then
+    # Moved, not deleted (brave-core's rules: never delete build output).
+    STASH="$BRAVERY_WORKDIR/stale-outputs/$(date +%Y%m%d-%H%M%S)"
+    for f in "${STALE[@]}"; do
+      [[ -e "$OUT_DIR/$f" ]] || continue
+      mkdir -p "$STASH/$(dirname "$f")"
+      mv "$OUT_DIR/$f" "$STASH/$f"
+    done
+    log "Moved files left by an older Brave build to $STASH: ${STALE[*]}; retrying"
+    continue
+  fi
   # siso only says "1 failed" at the end; the compiler's error scrolled past
   # tens of thousands of lines earlier. Repeat it here, between markers that
   # auto-update.sh copies into the GitHub issue.
@@ -185,7 +206,7 @@ if ! pnpm run build "${BUILD_ARGS[@]}"; then
     echo "=== end of failed build steps ==="
   } >&2
   exit 1
-fi
+done
 
 UNSIGNED="$OUT_DIR/apks/BraveMono${ARCH}.apk"
 [[ -f "$UNSIGNED" ]] || UNSIGNED="$OUT_DIR/apks/ChromePublic.apk"
