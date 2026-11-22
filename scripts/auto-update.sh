@@ -47,17 +47,31 @@ if [[ $STATUS -ne 0 ]]; then
     TITLE="Bravery build failed for Brave $TAG"
   fi
   log "$TITLE"
-  if ! gh issue list --repo "$BRAVERY_REPO" --state open --search "\"$TITLE\" in:title" \
-      --json number --jq '.[0].number' | grep -q .; then
-    {
-      echo "Automatic build of $RELEASE failed with exit code $STATUS on $(hostname)."
+  {
+    echo "Automatic build of $RELEASE failed with exit code $STATUS on $(hostname)."
+    echo
+    if grep -q '^=== Bravery: failed build steps ===' "$LOG"; then
+      echo "Failed build steps (full log: \`$LOG\`):"
       echo
+      echo '```'
+      sed -n '/^=== Bravery: failed build steps ===/,/^=== end of failed build steps ===/p' "$LOG" \
+        | head -c 60000
+      echo '```'
+    else
       echo "Last lines of \`$LOG\`:"
       echo
       echo '```'
       tail -n 80 "$LOG"
       echo '```'
-    } | gh issue create --repo "$BRAVERY_REPO" --title "$TITLE" --body-file - || true
+    fi
+  } > "$LOG.issue.md"
+  existing="$(gh issue list --repo "$BRAVERY_REPO" --state open \
+    --search "\"$TITLE\" in:title" --json number --jq '.[0].number' || true)"
+  if [[ -n "$existing" ]]; then
+    # Each failure can have a different cause; record every one.
+    gh issue comment "$existing" --repo "$BRAVERY_REPO" --body-file "$LOG.issue.md" || true
+  else
+    gh issue create --repo "$BRAVERY_REPO" --title "$TITLE" --body-file "$LOG.issue.md" || true
   fi
   exit "$STATUS"
 fi

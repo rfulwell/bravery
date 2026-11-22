@@ -171,7 +171,21 @@ if [[ -n "${BRAVERY_JOBS:-}" ]]; then
   BUILD_ARGS+=(--ninja "j:$BRAVERY_JOBS")
 fi
 log "Building (several hours on a first build)"
-pnpm run build "${BUILD_ARGS[@]}"
+if ! pnpm run build "${BUILD_ARGS[@]}"; then
+  # siso only says "1 failed" at the end; the compiler's error scrolled past
+  # tens of thousands of lines earlier. Repeat it here, between markers that
+  # auto-update.sh copies into the GitHub issue.
+  {
+    echo "=== Bravery: failed build steps ==="
+    if [[ -s "$OUT_DIR/siso_output" ]]; then
+      tail -n 200 "$OUT_DIR/siso_output"
+    else
+      echo "(no $OUT_DIR/siso_output; see the full log)"
+    fi
+    echo "=== end of failed build steps ==="
+  } >&2
+  exit 1
+fi
 
 UNSIGNED="$OUT_DIR/apks/BraveMono${ARCH}.apk"
 [[ -f "$UNSIGNED" ]] || UNSIGNED="$OUT_DIR/apks/ChromePublic.apk"
