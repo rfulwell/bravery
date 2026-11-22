@@ -50,14 +50,19 @@ jobs:
         if: steps.brave.outputs.needed == 'true'
         run: |
           pip install pyyaml
-          scripts/check-patches.sh "${{ steps.brave.outputs.tag }}"
+          status=0
+          scripts/check-patches.sh "${{ steps.brave.outputs.tag }}" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
 
       - name: Queue the build on your machine
         if: steps.brave.outputs.needed == 'true'
         run: gh workflow run build.yml -f brave_tag="${{ steps.brave.outputs.tag }}"
 
       - name: Open an issue
-        if: failure() && steps.check.outcome == 'failure'
+        # Only when the patches really stopped applying (exit 3), not on a
+        # network failure; the next scheduled watch retries.
+        if: failure() && steps.check.outputs.status == '3'
         run: |
           title="Bravery patches need updating for Brave ${{ steps.brave.outputs.tag }}"
           if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')" ]; then

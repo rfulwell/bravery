@@ -5,6 +5,8 @@
 #   scripts/check-patches.sh v1.98.61
 #
 # Needs git, python3 with PyYAML, and network access to GitHub. ~2 GB of disk.
+# Exit codes: 3 the patches or plaster rules no longer apply, other non-zero
+# for anything else (e.g. a network failure).
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
@@ -31,6 +33,10 @@ fi
 mapfile -t PLASTERS < <(python3 "$BRAVERY_ROOT/scripts/merge-rewrites.py" .)
 if (( ${#PLASTERS[@]} )); then
   log "Checking plaster rules against Chromium"
-  python3 "$BRAVERY_ROOT/scripts/check-plasters.py" . "${PLASTERS[@]}" || exit 3
+  status=0
+  python3 "$BRAVERY_ROOT/scripts/check-plasters.py" . "${PLASTERS[@]}" || status=$?
+  # 1: a rule no longer matches (exit 3, like a patch that doesn't apply).
+  # 2: couldn't download Chromium sources; a network problem, so exit 1.
+  (( status == 0 )) || exit $(( status == 1 ? 3 : 1 ))
 fi
 log "Patches are good for $TAG"

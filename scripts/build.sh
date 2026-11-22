@@ -67,12 +67,32 @@ chmod 600 .env
 # --no-history: shallow Chromium checkout, tens of GB and hours less to fetch.
 SYNC_ARGS=(--target_os=android "--target_arch=$ARCH")
 FETCH_ARGS=(--no-history)
+# Runs `pnpm run init|sync ...`. When a new Chromium version starts tracking
+# files that an old dependency checkout left behind, git refuses to overwrite
+# them; move those aside (into $BRAVERY_WORKDIR/stale-checkouts, nothing is
+# deleted) and retry.
+sync_chromium() {
+  local sync_log attempt
+  sync_log="$(mktemp)"
+  for attempt in 1 2 3 4; do
+    if pnpm run "$@" 2>&1 | tee "$sync_log"; then
+      rm -f "$sync_log"
+      return 0
+    fi
+    (( attempt < 4 )) || break
+    python3 "$BRAVERY_ROOT/scripts/move-stale-checkouts.py" "$sync_log" \
+      "$BRAVERY_WORKDIR/stale-checkouts" || break
+    log "Moved files left by an older Chromium version to $BRAVERY_WORKDIR/stale-checkouts; retrying"
+  done
+  rm -f "$sync_log"
+  return 1
+}
 if [[ ! -d "$BRAVERY_SRC/.git" || ! -d vendor/depot_tools ]]; then
   log "First run: fetching Chromium (tens of GB, this takes a while)"
-  pnpm run init "${SYNC_ARGS[@]}" "${FETCH_ARGS[@]}"
+  sync_chromium init "${SYNC_ARGS[@]}" "${FETCH_ARGS[@]}"
 else
   log "Syncing Chromium and dependencies for $TAG"
-  pnpm run sync "${SYNC_ARGS[@]}" "${FETCH_ARGS[@]}" -D
+  sync_chromium sync "${SYNC_ARGS[@]}" "${FETCH_ARGS[@]}" -D
 fi
 export PATH="$BRAVERY_BRAVE_CORE/vendor/depot_tools:$PATH"
 
